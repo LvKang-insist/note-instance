@@ -18,7 +18,7 @@
 
 ​		 生命周期：
 
-​				  onCreate --> oNStartCommand --> onDestory
+​				  onCreate --> onStartCommand --> onDestory
 
 ​			注意：如果服务已经开启，不会重复调用 onCreate 方法，如果再次调用 startService方法。service 而是会  			
 
