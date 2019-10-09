@@ -1,4 +1,4 @@
-​		**在日常开发中，我们经常会使用到 对话框。原来一直使用的就是普通的 dialog。但是最近看到了 DialogFragment。于是就研究了一下，他本是也是一个 fragmen，它具有自己的生命周期，只是内部绑定了一个 dialog。经过几天的使用之后，我对他做了一个 封装。满足了日常的需求。**
+	**在日常开发中，我们经常会使用到 对话框。原来一直使用的就是普通的 dialog。但是最近看到了 DialogFragment。于是就研究了一下，他本是也是一个 fragmen，它具有自己的生命周期，只是内部绑定了一个 dialog。经过几天的使用之后，我对他做了一个 封装。满足了日常的需求。**
 
 
 
@@ -455,7 +455,7 @@ TextView 的按压效果
 
 效果如图：
 
-
+![sadf](assets\sadf.gif)
 
 ### 使用二：自定义继承自BaseFragDialog
 
@@ -517,7 +517,7 @@ DateDialog.DateBuilder()
                 .setCancelable(false) //对话框不可取消
                 .setAlpha(1) // 透明度
                 .setAutoDismiss(true) //是否禁用所有的点击事件
-                .setGravity(Gravity.TOP) //对话框的位置
+                .setGravity(Gravity.CENTER) //对话框的位置
                 .setAnimation(R.style.BottomAnimStyle) // 添加动画
                 .build()
                 .show(getSupportFragmentManager(),"d1");
@@ -526,6 +526,8 @@ DateDialog.DateBuilder()
 布局，动画使用一中的一样
 
 效果如图
+
+![sadf](assets\sadf-1570627768436.gif)
 
 ### 使用三：实现 提示框，如成功，失败，警告，加载中等。
 
@@ -719,3 +721,20 @@ public class ToastDialog extends BaseFragDialog {
 
 效果如图：
 
+![sadf](assets\sadf-1570628082817.gif)
+
+![1570628235468](assets\1570628235468.png)
+
+![1570628315027](assets\1570628315027.png)
+
+![1570628360754](assets\1570628360754.png)
+
+
+
+ 
+
+------
+
+​	以上就是 简单的封装和使用，其实里面还可以添加很多东西，这就看自己的使用了，如果需要某些配置，直接在 BaseFragDialog 中添加即可。
+
+​	是不是非常简单呢！
