@@ -164,7 +164,6 @@
 ```
 简单的说一下，就是加载视图，创建dialog对象，弹出dialog，最后根据加载的视图就可以拿到dialog中的控件，进行逻辑的处理。
 
-
 ---
 #### 二，使用dialog快速播放视频.
 
@@ -204,7 +203,6 @@ layout.setOnClickListener(new View.OnClickListener() {
 ```
 
 首先创建VideoView的对象，然后扔进dailog中，然后设置dialog的窗口位置和大小，最后弹出对话框，播放视频。
-
 
 ---
 
