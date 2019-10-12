@@ -1,4 +1,6 @@
-DataBinding 的使用
+## DataBinding 的使用
+
+**DataBinding 一般情况下很少使用，但是如果你要使用 MVVM 框架，那么 DataBinding就是必不可少的了。下面我们看一下他的用法：** 
 
 准备工作
 
@@ -76,9 +78,11 @@ UserBean bean = new UserBean("张三",20);
 activityMainBinding.setUser(bean);
 ```
 
-运行程序，就会发现数据已经自动显示到上面了
+运行程序，就会发现数据已经自动显示到上面了。
 
-4，一处多用
+***注意，因为 布局的名字是 activity_main ,所以这是使用的是 ActivityMainBinding。这个类是系统根据布局文件的名字自动生成的。***
+
+#### 4，一处多用
 
 ​	如果 bean 类在布局的多个地方使用，且值不一样，该怎么办，如下所示：
 
@@ -501,8 +505,6 @@ ObservableList 的使用
         activityMainBinding.setUser(list);
 ```
 
- 
-
 ------
 
 
@@ -633,7 +635,20 @@ public class Data {
         android:visibility="@{user.status ? View.VISIBLE : View.GONE}"/>    
 ```
 
-------
+### 在适配器中使用
+
+​	简单的看一下就好：
+
+```java
+ @Override
+    public ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+        ItemNewsBinding itemNewsBinding = DataBindingUtil.inflate(LayoutInflater.from(mContext), R.layout.item_news,parent,false);
+        return new ViewHolder(itemNewsBinding);
+    }
+```
+
+这个是在 RecyclerView 适配器中使用，同理，其他的地方都差不多。
+
+
 
 > 参考：https://blog.csdn.net/qq_40881680/article/details/102240892
-
