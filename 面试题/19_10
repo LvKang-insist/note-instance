@@ -1,0 +1,27 @@
+### Activity 异常情况下的生命周期
+
+- 资源相关的系统配置发生改变导致 activity 被杀死并重新创建
+
+  如横竖屏切换时：activity 被杀死，即调用 onPause，onStop，onDestroy，同时调用 onSaveInstanceState 保存 activity 的状态，这个方法在 activity 异常终止时调用。重新创建时，系统会调用 onRestoreInstanceState 和 onCreate 方法，通过这两个可以判断 activity 是否被重建
+
+  如果不想 activity 屏幕旋转重建，可以设置 configChange=“orientation|screenSize”
+
+- 资源不足导致低优先级的 activity 被杀死
+
+  1，前台 activity，与用户交互的 activity，优先级最高
+
+  2，可见非前台，比如出现了一个弹窗，导致 activity 可见但不能进行交互
+
+  3，后台activity，已经被暂停，执行了 onStop 方法，优先级最低
+
+### 如何判断图片需要放在那些文件夹中
+
+​	ldpi：240 X 320
+
+​	mdpi：320 X 480
+
+​	hdpi：480 X 800
+
+​	xhdpi：960 X 720
+
+​	xxhdpi：1280 X 720
