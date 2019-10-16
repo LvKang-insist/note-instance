@@ -25,3 +25,52 @@
 ​	xhdpi：960 X 720
 
 ​	xxhdpi：1280 X 720
+
+### Integer 和 int 之间的区别
+
+- Integer 是 int 的包装类，必须实例化之后才可以使用，而 int 则不需要实例化
+- int 是 java 中一种基本的数据类型，
+- integer 的对象时引用，当 new 一个 Integer 时，实际上是生成的一个指针指向此对象。而int 则是直接存储数据值
+- Integer 默认值为 null，int 默认值为 0
+
+### String 转换 integer 的方式以原理
+
+​		
+
+### Activity 切换到 后台，在切换到前台的生命周期
+
+A调用： onCreate  -> onStart -> onResume A 可见，接着 A 跳转 B 时， 接着调用 onPause。
+
+B调用： onCreate ->onStart ->onResume B 可见，这时 A 调用 onStop，当 A 回到前台时：B调用 onPause，然后 A 调用 onReStart -> onStart -> onResume。然后b 调用 onStop -> onDestory 。
+
+### 弹出 Dialog 时按 Home 键 Activity 的生命周期
+
+​	弹出dialog：onCreate() -> onStart() -> onResume
+
+​	按下Home：onCreate() -> onStart() -> onResume -> onPause() -> onStop()  	
+
+​	为啥弹出 dialog 时没有执行 onPause 方法？
+
+​		我们弹出的 AlertDialog 对话框实际上是 Activity 的一个组件，此时的activity 并不是不可见，而是被一个布满屏幕的组件覆盖掉了，所以没办法进行操作。当点击了 Home 时 activity 才进入了后台。
+
+###  对 BroadcastReceiver 的了解？ 
+
+​	广播接收者，需要在清单文件中进行注册，还需要声明那种类型的广播能被广播接收器接收到。
+
+​	发送广播的方式：
+
+​		1，标准广播：广播发出后，符合要求的广播几乎会在同一时间接收到广播
+
+​		2，有序广播：广播发出后，同一时刻只能有一个广播接收到。可以选择继续传递，也可以拦截此广播。优先级高的会先接收到广播。
+
+​	本地广播
+
+​		本地广播是一种只能被本程序广播接收器所接收的广播
+
+### 动态广播和静态广播有什么不同
+
+- 动态的比静态安全
+- 静态在 App 启动时候就初始化了，动态则在代码中初始化
+- 静态需要在 清单文件中配置，动态不需要
+- 静态广播的生存期比动态长很多
+- 动态广播优先级比静态的高
