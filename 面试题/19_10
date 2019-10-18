@@ -74,3 +74,20 @@ B调用： onCreate ->onStart ->onResume B 可见，这时 A 调用 onStop，当
 - 静态需要在 清单文件中配置，动态不需要
 - 静态广播的生存期比动态长很多
 - 动态广播优先级比静态的高
+
+### Android 项目构建过程
+
+​	1，AAPT(Android Asset PackagingTool) 工具会打包应用中的资源文件，如 AndroidManifest.xml ，layout 中的布局等，并将xml 文件编译为 二进制形式，当然 assets 中的文件不会被编译。图片及 raw 文件资源会保持原来的形态，raw 中的资源会生出资源 id，AAPT 编译完成之后会生成 R.java 文件。
+
+​	2，AIDL 工具会将所有的 aidl 接口转化为 java 接口
+
+​	3，所有的 java 代码，包括 aidl 和 R.java 都会被 java 编译器编译成 .class 文件，
+
+​	4，Dex 工具会将上述产生的 .class 文件以及第三方库及其他的 .class 文件编译成 .dex文件(dex 文件是Dalvik 虚拟机可以执行的格式)，dex 文件最终被打包进 APK文件。
+
+​	5，ApkBuilder 工具会将编译过的资源文件 及 未编译过的(如 图片等) 以及 .dex 文件 打包成 APK 文件
+
+​	6，生成 apk 文件后，需要对齐签名才可安装到设备，平时测试会使用 debug keystore，当正式版发布时，必须使用 release 版的 keystore 进行签名。
+
+​	7，如果对 APK 正式签名，还需要使用 zipalign 工具对 APK 进行对齐操作，这样的好处是应用运行时会提高速度，但是会相应增加内存开销。
+
