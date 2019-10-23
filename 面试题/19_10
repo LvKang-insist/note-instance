@@ -91,3 +91,8 @@ B调用： onCreate ->onStart ->onResume B 可见，这时 A 调用 onStop，当
 
 ​	7，如果对 APK 正式签名，还需要使用 zipalign 工具对 APK 进行对齐操作，这样的好处是应用运行时会提高速度，但是会相应增加内存开销。
 
+### ArrayList 和 LinedList 的区别
+
+​	ArrayList：底层采用数组的方式，查询快，增删慢，允许 null 元素，线程是不安全的，从 JDK 1.8 开始 默认初始容量为 10
+
+​	LinkedList：底层采用链表，可以将元素插入到首部或者尾部，线程是不安全的，增删快，查询较慢。

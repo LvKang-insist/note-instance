@@ -1,4 +1,4 @@
-###  
+##  不解释，直接撸
 
 自定义 Adapter 和 Converter
 
@@ -64,6 +64,7 @@ public class LiveDataCallAdapterFactory extends CallAdapter.Factory {
                 protected void onActive() {
                     super.onActive();
                     if (started.compareAndSet(false, true)) {
+                        // enqueue 方法在最下面会讲
                         call.enqueue(new Callback<R>() {
                             @Override
                             public void onResponse(@NonNull Call<R> call, Response<R> response) {
@@ -274,7 +275,7 @@ public <T> T create(final Class<T> service) {
 
 //loadServiceMethod方法：通过这个方法返回 ServiceMethod 对象
 ServiceMethod<?, ?> loadServiceMethod(Method method) {
-    //从缓存中获取该方法
+    //从缓存中获取 method
     ServiceMethod<?, ?> result = serviceMethodCache.get(method);
     if (result != null) return result;
 	//如果为空，则进行创建
@@ -294,7 +295,7 @@ ServiceMethod<?, ?> loadServiceMethod(Method method) {
 
 ```java
  public ServiceMethod build() {
-     //1，  通过这个方法 可以拿到我们自定义的 adapter
+     //1，通过这个方法 可以拿到我们自定义的 adapter
       callAdapter = createCallAdapter();
      //还记得 我说的 responseType 方法的返回值吗？拿到返回值后 给了responseType，还记得他是什么吗？
      //他 应该是接口方法返回值的泛型
@@ -305,15 +306,10 @@ ServiceMethod<?, ?> loadServiceMethod(Method method) {
             + Utils.getRawType(responseType).getName()
             + "' is not a valid response body type. Did you mean ResponseBody?");
       }
-     //2，创建 转换器 converter
+      //2，通过这个方法 可以拿到我们自定义的 converter
       responseConverter = createResponseConverter();
 
-      for (Annotation annotation : methodAnnotations) {
-        parseMethodAnnotation(annotation);
-      }
-
       ......
-
       return new ServiceMethod<>(this);
 }
 // 先看一下 1.
@@ -417,7 +413,7 @@ public <T> T create(final Class<T> service) {
 }
 ```
 
-可以看到最终调用了我们自定义的 adapt 方法。然后 传入创建好的 okHttpCall，就好了**。最终在我们在 adapt 方法中实现接口， 调用 enqueue 方法完成了异步请求。**
+可以看到最终调用了我们自定义的 adapt 方法。然后 传入创建好的 okHttpCall，就好了**。最终在我们在 adapt 方法中 使用 call 调用 enqueue 方法实现接口 。**
 
 接着我们来看一下 okHttpCall 的 enqueue 方法：
 
@@ -448,9 +444,12 @@ public <T> T create(final Class<T> service) {
    call.enqueue(new okhttp3.Callback() {
       @Override public void onResponse(okhttp3.Call call, okhttp3.Response rawResponse)
           throws IOException {
+        //rawResponse 就是请求的结果 response
+        
+        // 这个 Response 是 Retrofit 中的  
         Response<T> response;
         try {
-          //1, 解析 response
+          //1, 解析 rawResponse
           response = parseResponse(rawResponse);
         } catch (Throwable e) {
           callFailure(e);
@@ -474,9 +473,9 @@ public <T> T create(final Class<T> service) {
 	.......
     ExceptionCatchingRequestBody catchingBody = new ExceptionCatchingRequestBody(rawBody);
     try {
-      // 注意这里  
+      // 注意这里  这里最终调用的是 我们自定义的 converter
       T body = serviceMethod.toResponse(catchingBody);
-      //将 converter 返回的对象 和 rawResponse 传进去 。 返回一个 Retrofit 的 Response 对象
+      // 返回一个 Retrofit 的 Response 对象
       return Response.success(body, rawResponse);
     } catch (RuntimeException e) {
       // If the underlying source threw an exception, propagate that rather than indicating it was
@@ -561,3 +560,4 @@ public <T> T create(final Class<T> service) {
 
 ​	以上就是 Retrofit 从创建到 请求完成 的流程了
 
+>  如果错误，还请指出
