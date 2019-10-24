@@ -96,3 +96,46 @@ B调用： onCreate ->onStart ->onResume B 可见，这时 A 调用 onStop，当
 ​	ArrayList：底层采用数组的方式，查询快，增删慢，允许 null 元素，线程是不安全的，从 JDK 1.8 开始 默认初始容量为 10
 
 ​	LinkedList：底层采用链表，可以将元素插入到首部或者尾部，线程是不安全的，增删快，查询较慢。
+
+### 静态代理和动态代理
+
+​	静态代理：主要有 接口，被代理类，代理类 。被代理类 和 代理类都实现 接口。最后给 代理类传入 被代理类的对象，然后 就可以通过 代理类去调用 被代理类的 方法，并且可在代理类中完成一些额外的操作。这样的好处就是：在 一个类不能被直接修改 或者是 不想直接创建他的对象时，可以 new 一个代理类，通过这个代理 进行 控制，并且很容易添加一些新的方法。
+
+​	动态代理：主要有 接口，被代理类。通过 Proxy.newProxyInstance 方法 可以生成一个方法，在这个方法中可以直接调用被代理类的方法，并可以添加一些额外的操作。如下所示：
+
+```java
+// 接口
+interface Subject {
+    void sub();
+}
+
+// 被代理类
+class RctSub implements Subject {
+    @Override
+    public void sub() {
+        System.out.println("rct");
+    }
+}
+
+
+private static RctSub rct;
+public static void main(String[] args) {
+        rct = new RctSub();
+        //创建动态代理
+        Subject subject = create(Subject.class);
+        //调用 sub 会执行下面的 invoke 方法，
+        subject.sub();
+}
+
+public static <T> T create(final Class<T> cls) {
+        return (T) Proxy.newProxyInstance(cls.getClassLoader(), new Class[]{cls}, new InvocationHandler() {
+            @Override
+            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                //调用被代理类的方法，
+                return method.invoke(rct, args);
+            }
+        });
+    }
+```
+
+好处是：在程序运行期间，会自动生成代理类，代理类逻辑 和 业务逻辑 进行解耦。
