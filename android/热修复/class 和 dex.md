@@ -90,7 +90,19 @@ constant_pool：常量池，下面是几种常用的类型
 
 ![0](class%20%E5%92%8C%20dex.assets/0.png)
 
+注意看 u1 tag：
+
+​	在常量池中有14种类型，这个常量都是一个表，每一个表都有各自组成的机构，这写常量都有一个得点，每个常量的开始都是一个用 u1 类型的无符号数表示的标志位，如下表所示：
+
+ ![https://upload-images.jianshu.io/upload_images/4179925-1d5f4a103a509c17.png](class%20%E5%92%8C%20dex.assets/4179925-1d5f4a103a509c17.png) 
+
+常量池中第一个 struct cp_info constant_poll[0] ，他的后面是 Methodref ，标志是 10 ，我们和上面的表对比一下，找到第 10 个，也是 Methodref ，通过这个表，我们可以查看 u1 tag 到底表示的是那种类型。
+
+
+
 ![1](class%20%E5%92%8C%20dex.assets/1.png)
+
+
 
 如上面的 fields_count 为1，下面就有一个 struct field_info 的结构体，里面保存了字段的信息，methods_count 为 2，下面就有 methods[0] 和 methods[1] 两个结构体，来表示这两个方法。这也就对应了上面的表
 
