@@ -10,7 +10,7 @@ AndFix基本介绍
 
 AndFix 执行流程及核心原理
 
-​	 ![principle.png](5%EF%BC%8CAndFix%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/principle.png) 
+![principle.png](5%EF%BC%8CAndFix%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/principle.png) 
 
 ​		从图中看到 A 调用 B，B 调用 C，但是 B 出了 bug。出现bug 以后 通过 AndFix 生成一个 patch，这个patch 中包含了要被替换的 B，然后执行的顺序就成为了 A 调用 B' ，B' 调用 C，这样就避免了调用 bug。
 
@@ -93,7 +93,7 @@ public class AndFixManager {
 
 ​	3，准备一个有 bug 的 apk 并安装到手机
 
-```
+```java
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
     /**
