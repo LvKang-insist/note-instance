@@ -39,9 +39,9 @@
 
 ​		基于 Dex 文件的格式，研发了 DexDiff 算法，通过 DexDiff 算法比较两个 apk 文件中的差异 
 
-### 使用 Tinker 完成线上 bug 修复
+### 简单的使用 Tinker 
 
-##### 	1,在项目的gradle.properties 中添加
+#### 	1,在项目的gradle.properties 中添加
 
 ```java
 # tinker版本号 ,控制版本,以下版本已经兼容 9.0
@@ -49,13 +49,13 @@ TINKER_VERSION=1.9.14
 TINKERPATCH_VERSION=1.2.14
 ```
 
-##### 			2,在项目的 gradle中添加：
+#### 			2,在项目的 gradle中添加：
 
 ```
 classpath("com.tencent.tinker:tinker-patch-gradle-plugin:${TINKER_VERSION}")
 ```
 
-##### 			3,在 app 中的 gradle 中添加：
+#### 			3,在 app 中的 gradle 中添加：
 
 ```java
    compileOnly("com.tencent.tinker:tinker-android-anno:${TINKER_VERSION}") { changing = true }
@@ -64,7 +64,7 @@ classpath("com.tencent.tinker:tinker-patch-gradle-plugin:${TINKER_VERSION}")
     implementation("com.tinkerpatch.sdk:tinkerpatch-android-sdk:${TINKERPATCH_VERSION}") { changing = true }
 ```
 
-##### 	4,接着进行初始化，新建一个类用于管理 tinker 的初始化
+#### 	4,接着进行初始化，新建一个类用于管理 tinker 的初始化
 
 ```java
 /**
@@ -113,7 +113,7 @@ public class TinkerManager {
 }
 ```
 
-##### 5,自定义 application 继承自 ApplicationLike
+#### 5,自定义 application 继承自 ApplicationLike
 
 ```java
 //通过 DefaultLifeCycle 注解来生成我们程序中需要用到的 Application
@@ -154,7 +154,7 @@ public class MyTinkerApplication extends TinkerApplication {
 
 
 
-##### 6,配置 tinker
+#### 6,配置 tinker
 
 ```java
 //buildDir 代表的是 app 目录下 build 文件夹，
@@ -331,7 +331,7 @@ if (buildWithTinker()) {
 
 [详细的说明](https://github.com/Tencent/tinker/wiki/Tinker-%E6%8E%A5%E5%85%A5%E6%8C%87%E5%8D%97)
 
-##### 7,进行测试，打包
+#### **7,进行测试，打包**
 
 ```java
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
@@ -392,7 +392,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
 然后把这个apk安装到手机上即可。
 
-##### 8，创建补丁文件
+#### 8，创建补丁文件
 
 创建补丁文件的时候需要线上的 apk。所以在这里 我们将刚才打包的 apk 名字复制下来，然后放在build.gradle 中的 ext 中，如下所示：
 
@@ -457,6 +457,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
 ![456](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/456.png)
 
+#### 9，加载补丁文件，修复bug
+
 其中 patch_signed.apk 就是我们需要的补丁包。我们需要将补丁包复制到的我们程序中定义的路径中：
 
 ![1574066373751](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/1574066373751.png)
@@ -470,6 +472,131 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
 
 ​	经过上面几步，我们就已经完成了一个从本地加载的热修复
+
+
+
+
+
+### 在项目中使用 Tinker 
+
+​		当然了，我们不可能一直从本地加载补丁文件。所以我们需要对加载 补丁文件进行修改一下。
+
+​		新建一个 服务。在服务中我们会进行请求服务器是否有新的补丁，如果有补丁就下载到指定的目录中，然后进行加载补丁文件。
+
+```java
+public class TinkerService extends Service {
+
+    /**
+     * 文件后缀名
+     */
+    private static final String FILE_END = ".apk";
+    /**
+     * 下载 patch 文件信息
+     */
+    private static final int DOWNLOAD_PATCH = 0x01;
+    /**
+     * 检查是否有 patch 更新
+     */
+    private static final int UPDATE_PATCH = 0x02;
+
+
+    /**
+     * patch 要保存的文件夹
+     */
+    private String mPatchFileDir;
+    /**
+     * patch 文件保存路径
+     */
+    private String mFilePath;
+
+    /**
+     * 服务器 patch 的信息
+     */
+    private BasePatch mBasePatchInfo;
+
+    @SuppressLint("HandlerLeak")
+    private Handler mHandler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case UPDATE_PATCH:
+                    checkPatchInfo();
+                    break;
+                case DOWNLOAD_PATCH:
+                    downloadPatch();
+                    break;
+            }
+        }
+    };
+
+    private void downloadPatch() {
+		//下载补丁文件
+		mFilePath = mPatchFileDir.concat("tinker")
+                        .concat(FILE_END);
+		//.....下载完成，进行加载
+         TinkerManager.loadPatch(mFilePath);
+         //加载完成后终止服务
+         stopSelf();
+    }
+
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        init();
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        //检查是否有 patch 更新
+        mHandler.sendEmptyMessage(UPDATE_PATCH);
+        return START_NOT_STICKY;
+    }
+
+    private void init() {
+        mPatchFileDir = getExternalCacheDir().getAbsolutePath() + "/tPatch/";
+        File patchFileDir = new File(mPatchFileDir);
+        try {
+            if (!patchFileDir.exists()) {
+                //文件夹不存在则创建
+                patchFileDir.mkdir();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            //无法创建文件，终止服务
+            stopSelf();
+        }
+
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+
+    /**
+     * 检查是否有更新
+     */
+    private void checkPatchInfo() {
+		//.....网络请求获取是否更新补丁文件，不更新就终止服务
+		//下载补丁文件
+        mHandler.sendEmptyMessage(DOWNLOAD_PATCH);
+    }
+}
+
+```
+
+
+
+### Tinker 高级用法
+
+- Tinker 如何支持多渠道打包
+- 如何自定义 Tinker 行为
+- 要注意的问题
+
+
+
+
 
 ### Tiner 源码
 
