@@ -237,12 +237,7 @@ if (buildWithTinker()) {
         }
     }
 
-    //判断一下当前的配置中是否配置了多渠道
-    List<String> flavors = new ArrayList<>()
-    project.android.productFlavors.each { flavor ->
-        flavors.add(flavor.name)
-    }
-    boolean hasFlavors = flavors.size() > 0
+   
 
     /**
      * 复制基准包和其它必须文件到指定目录
@@ -284,44 +279,9 @@ if (buildWithTinker()) {
             }
         }
     }
-
-    project.afterEvaluate {
-        if (hasFlavors) {
-            task(tinkerPatchAllFlavorRelease) {
-                group = 'tinker'
-                def originOldPath = getTinkerBuildFlavorDirectory()
-                for (String flavor : flavors) {
-                    def tinkerTask = tasks.getByName("tinkerPatch${flavor.capitalize()}Release")
-                    dependsOn tinkerTask
-                    def preAssembleTask = tasks.getByName("process${flavor.capitalize()}ReleaseManifest")
-                    preAssembleTask.doFirst {
-                        String flavorName = preAssembleTask.name.substring(7, 8).toLowerCase() + preAssembleTask.name.substring(8, preAssembleTask.name.length() - 15)
-                        project.tinkerPatch.oldApk = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-release.apk"
-                        project.tinkerPatch.buildConfig.applyMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-release-mapping.txt"
-                        project.tinkerPatch.buildConfig.applyResourceMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-release-R.txt"
-                    }
-                }
-            }
-
-            task(tinkerPatchAllFlavorDebug) {
-                group = 'tinker'
-                def originOldPath = getTinkerBuildFlavorDirectory()
-                for (String flavor : flavors) {
-                    def tinkerTask = tasks.getByName("tinkerPatch${flavor.capitalize()}Debug")
-                    dependsOn tinkerTask
-                    def preAssembleTask = tasks.getByName("process${flavor.capitalize()}DebugManifest")
-                    preAssembleTask.doFirst {
-                        String flavorName = preAssembleTask.name.substring(7, 8).toLowerCase() + preAssembleTask.name.substring(8, preAssembleTask.name.length() - 13)
-                        project.tinkerPatch.oldApk = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-debug.apk"
-                        project.tinkerPatch.buildConfig.applyMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-debug-mapping.txt"
-                        project.tinkerPatch.buildConfig.applyResourceMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-debug-R.txt"
-                    }
-
-                }
-            }
-        }
-    }
+    
 }
+
 ```
 
 注意 ext 中：
@@ -591,12 +551,242 @@ public class TinkerService extends Service {
 ### Tinker 高级用法
 
 - Tinker 如何支持多渠道打包
+
+  1，首先在项目中集成多渠道，我使用的是友盟
+
+  2，修改 app 中 build.gradle 文件，添加如下：
+
+  ```
+  ext {
+      ...... 多渠道路径
+      tinkerBuildFlavorDirectory = "{bakPath}/"
+  }
+  ```
+
+  ```
+  //多渠道路径
+  def getTinkerBuildFlavorDirectory() {
+      return ext.tinkerBuildFlavorDirectory
+  }
+  ```
+
+  接着在最下面添加如下：
+
+  ```java
+  
+  List<String> flavors = new ArrayList<>()
+      project.android.productFlavors.each { flavor ->
+          flavors.add(flavor.name)
+      }
+  //是否有渠道
+  boolean hasFlavors = flavors.size() > 0
+  
+  
+  //完成多渠道路径的拼凑
+      project.afterEvaluate {
+          if (hasFlavors) {
+              task(tinkerPatchAllFlavorRelease) {
+                  group = 'tinker'
+                  //获取多渠道文件夹
+                  def originOldPath = getTinkerBuildFlavorDirectory()
+                  for (String flavor : flavors) {
+                      def tinkerTask = tasks.getByName("tinkerPatch${flavor.capitalize()}Release")
+                      dependsOn tinkerTask
+                      def preAssembleTask = tasks.getByName("process${flavor.capitalize()}ReleaseManifest")
+                      preAssembleTask.doFirst {
+                          //拼装路径
+                          String flavorName = preAssembleTask.name.substring(7, 8).toLowerCase() + preAssembleTask.name.substring(8, preAssembleTask.name.length() - 15)
+                          project.tinkerPatch.oldApk = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-release.apk"
+                          project.tinkerPatch.buildConfig.applyMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-release-mapping.txt"
+                          project.tinkerPatch.buildConfig.applyResourceMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-release-R.txt"
+                      }
+                  }
+              }
+  
+              task(tinkerPatchAllFlavorDebug) {
+                  group = 'tinker'
+                  def originOldPath = getTinkerBuildFlavorDirectory()
+                  for (String flavor : flavors) {
+                      def tinkerTask = tasks.getByName("tinkerPatch${flavor.capitalize()}Debug")
+                      dependsOn tinkerTask
+                      def preAssembleTask = tasks.getByName("process${flavor.capitalize()}DebugManifest")
+                      preAssembleTask.doFirst {
+                          String flavorName = preAssembleTask.name.substring(7, 8).toLowerCase() + preAssembleTask.name.substring(8, preAssembleTask.name.length() - 13)
+                          project.tinkerPatch.oldApk = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-debug.apk"
+                          project.tinkerPatch.buildConfig.applyMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-debug-mapping.txt"
+                          project.tinkerPatch.buildConfig.applyResourceMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-debug-R.txt"
+                      }
+  
+                  }
+              }
+          }
+      }
+  ```
+
+  3，打包一个有 bug 的 apk，注意打包的时候用多渠道
+
+  ![1574305942128](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/1574305942128.png)
+
+  ​	打包后的结构如下：
+
+  ![1574306063414](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/1574306063414.png)
+
+  ​	可以看到结构非常清楚
+
+  4，修改 bug。指定线上版本路径(也就是刚打包好的)
+
+  ​	首先修改 bug。
+
+  ​	接着 指定 old.apk 路径，刚才打包好的
+
+  ```java
+  ext {
+      tinkerEnable = true
+      tinkerID = "1.0"
+      tinkerOldApkPath = "${bakPath}/app-1121-11-12-41"
+      tinkerApplyMappingPath = "${bakPath}/app-1121-11-12-41"
+      tinkerApplyResourcePath = "${bakPath}/app-1121-11-12-41"
+      tinkerBuildFlavorDirector = "${bakPath}/app-1121-11-12-41"
+  }
+  ```
+
+  ​	可以看到这里和最开始我们使用的方式不同，因为这里使用了多渠道。所以这里只写一个外层的路径即可。还记得在 2 中配置的 project.afterEvaluate 吗？这个脚本就会遍历这个路径，然后完成多渠道的路径拼凑
+
+  5，生成补丁文件
+
+  ![345](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/345.png)
+
+  这里选择生成所有渠道的补丁文件
+
+  生成后的结构如下:
+
+  ![52](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/52.png)
+
+  6，说明
+
+  ​	生成补丁文件后就可以进行 bug 的修复了。这个上面已经说过了。这里就不罗嗦了。但是要注意，如果是正式的项目，多渠道的补丁文件生成后需要全部放在服务器上。**而客户端在请求是否需要加载补丁时需要向服务器传入当前App的渠道。然后服务器根据传入的渠道判断是否有补丁文件，最后返回对应渠道的补丁文件**
+
+  ​	补丁生成后注意看一下 log。看一下 old.apk 和 new.apk 后面的渠道名字是否相同，如果不相同，则补丁无法使用。我遇到了好多这种情况，不知道为啥
+
+  
+
 - 如何自定义 Tinker 行为
-- 要注意的问题
+
+​		自定义TinkerResultService 改变 patch 安装成功后行为
+
+​		一般情况下 patch 安装后 tinker 会杀掉进程，所以我们才会看到 patch 加载完成后程序闪退的问题，我们可以通过 重写 DefaultTinkerResultService 来自定义这个行为，如下：
+
+​	在 DefaultTinkerResultService 的 onPatchResult 方法中 判断了 patch 安装成功后的行为。如下：
+
+```java
+ @Override
+    public void onPatchResult(PatchResult result) {
+     	......
+        // only main process can load an upgrade patch!
+        if (result.isSuccess) {
+        	//加载完成后删除 patch 文件
+            deleteRawPatchFile(new File(result.rawPatchFilePath));
+            //如果成功，则杀掉进程
+            if (checkIfNeedKill(result)) {
+                android.os.Process.killProcess(android.os.Process.myPid());
+            } else {
+                TinkerLog.i(TAG, "I have already install the newly patch version!");
+            }
+        }
+    }
+```
+
+​		从源码可以很清楚地看到杀掉进程。我们可以通过继承的方式来解决如下：	
+
+```java
+public class CustomResultService extends DefaultTinkerResultService {
+
+    private static final String TAG = "CustomResultService";
+
+    //返回 patch 文件的安装结果
+    @Override
+    public void onPatchResult(PatchResult result) {
+		......
+        // if success and newPatch, it is nice to delete the raw file, and restart at once
+        // only main process can load an upgrade patch!
+        if (result.isSuccess) {
+            deleteRawPatchFile(new File(result.rawPatchFilePath));
+            if (checkIfNeedKill(result)) {
+                TinkerLog.e(TAG, "patch加载成功，重启生效");
+            } else {
+                TinkerLog.i(TAG, "I have already install the newly patch version!");
+            }
+        }
+    }
+}
+
+```
+
+​		其实和源码中差不多，只是改了一句而已。加载成功后打印 log 即可。
+
+​	弄完以后，我们需要修改一下初始化方法。我们是在 TinkerMananger 的 installTinker 方法中初始化的，下面我们进行修改，如下：
+
+```java
+ LoadReporter loadReporter = new DefaultLoadReporter(applicationLike.getApplication());
+        PatchReporter patchReporter = new DefaultPatchReporter(applicationLike.getApplication());
+        PatchListener patchListener = new DefaultPatchListener(applicationLike.getApplication());
+        AbstractPatch upgradePatchProcessor = new UpgradePatch();
+
+        //完成 tinker 初始化
+        TinkerInstaller.install(applicationLike,
+                loadReporter,
+                patchReporter,
+                patchListener,
+                CustomResultService.class,
+                upgradePatchProcessor);
+```
+
+​		CustomResultService 就是我们自定义的。将他传入即可，注意这是一个服务，必须在 AndroidManifest.xml 中注册
+
+​			结果如下：
+
+​	
+
+```java
+2019-11-21 16:59:42.335 6337-6404/? E/CustomResultService: patch加载成功，重启生效
+```
 
 
 
+​	自定义 PatchListener 监听 patch receiver 事件
 
+​		也就是上面代码中的 DefaultPatchListener ，继承他即可，使用它可以完成 patch 的校验
+
+​		例如，从服务器拉取补丁时服务器返回一个 md5, 我们可以在这个里面进行判断。
+
+```java
+/**
+ * 1,校验 patch 文件是否合法，2，启动 Service 去安装 patch
+ */
+public class CustomPatchListener extends DefaultPatchListener {
+
+    private String currentMD5;
+
+    public void setCurrentMD5(String currentMD5) {
+        this.currentMD5 = currentMD5;
+    }
+
+    public CustomPatchListener(Context context) {
+        super(context);
+    }
+
+    @Override
+    protected int patchCheck(String path, String patchMd5) {
+        if (Utils.isFileMD5Matched(path,currentMD5)){
+            return ShareConstants.ERROR_PATCH_DISABLE;
+        }
+        return super.patchCheck(path, patchMd5);
+    }
+}
+
+```
+
+​		同样的要将初始化方法中第四个参数改为这个类对象
 
 ### Tiner 源码
 
