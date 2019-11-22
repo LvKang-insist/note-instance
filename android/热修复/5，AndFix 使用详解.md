@@ -1,5 +1,7 @@
 AndFix基本介绍
 
+​		已经好几年没有维护了，阿里出了一个收费的。这个已经被放弃了。这里只是简单的介绍一下用法
+
 ​		AndFix是一个在线修复bug的解决方案，而不是重新发布Android App。它是作为Android库发布的。Andfix是“Android热修复”的缩写。
 
 ​		 AndFix支持Android 2.3 - 7.0版本，支持ARM和X86架构，支持Dalvik和ART runtime，支持32位和64位 
@@ -232,5 +234,3 @@ patch 安装
 然后打开 app ，点击修复按钮之后重启应用，就会发现bug已经修复了。
 
 ​		
-
-AndFix 源码详解

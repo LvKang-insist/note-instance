@@ -237,6 +237,12 @@ if (buildWithTinker()) {
         }
     }
 
+    
+List<String> flavors = new ArrayList<>()
+    project.android.productFlavors.each { flavor ->
+        flavors.add(flavor.name)
+    }
+boolean hasFlavors = flavors.size() > 0
    
 
     /**
@@ -552,127 +558,69 @@ public class TinkerService extends Service {
 
 - Tinker 如何支持多渠道打包
 
-  1，首先在项目中集成多渠道，我使用的是友盟
+  首先在项目中集成多渠道，我使用的是 walle，集成的方式非常简单：
 
-  2，修改 app 中 build.gradle 文件，添加如下：
-
-  ```
-  ext {
-      ...... 多渠道路径
-      tinkerBuildFlavorDirectory = "{bakPath}/"
-  }
-  ```
-
-  ```
-  //多渠道路径
-  def getTinkerBuildFlavorDirectory() {
-      return ext.tinkerBuildFlavorDirectory
-  }
-  ```
-
-  接着在最下面添加如下：
+  添加插件
 
   ```java
-  
-  List<String> flavors = new ArrayList<>()
-      project.android.productFlavors.each { flavor ->
-          flavors.add(flavor.name)
-      }
-  //是否有渠道
-  boolean hasFlavors = flavors.size() > 0
-  
-  
-  //完成多渠道路径的拼凑
-      project.afterEvaluate {
-          if (hasFlavors) {
-              task(tinkerPatchAllFlavorRelease) {
-                  group = 'tinker'
-                  //获取多渠道文件夹
-                  def originOldPath = getTinkerBuildFlavorDirectory()
-                  for (String flavor : flavors) {
-                      def tinkerTask = tasks.getByName("tinkerPatch${flavor.capitalize()}Release")
-                      dependsOn tinkerTask
-                      def preAssembleTask = tasks.getByName("process${flavor.capitalize()}ReleaseManifest")
-                      preAssembleTask.doFirst {
-                          //拼装路径
-                          String flavorName = preAssembleTask.name.substring(7, 8).toLowerCase() + preAssembleTask.name.substring(8, preAssembleTask.name.length() - 15)
-                          project.tinkerPatch.oldApk = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-release.apk"
-                          project.tinkerPatch.buildConfig.applyMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-release-mapping.txt"
-                          project.tinkerPatch.buildConfig.applyResourceMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-release-R.txt"
-                      }
-                  }
-              }
-  
-              task(tinkerPatchAllFlavorDebug) {
-                  group = 'tinker'
-                  def originOldPath = getTinkerBuildFlavorDirectory()
-                  for (String flavor : flavors) {
-                      def tinkerTask = tasks.getByName("tinkerPatch${flavor.capitalize()}Debug")
-                      dependsOn tinkerTask
-                      def preAssembleTask = tasks.getByName("process${flavor.capitalize()}DebugManifest")
-                      preAssembleTask.doFirst {
-                          String flavorName = preAssembleTask.name.substring(7, 8).toLowerCase() + preAssembleTask.name.substring(8, preAssembleTask.name.length() - 13)
-                          project.tinkerPatch.oldApk = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-debug.apk"
-                          project.tinkerPatch.buildConfig.applyMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-debug-mapping.txt"
-                          project.tinkerPatch.buildConfig.applyResourceMapping = "${originOldPath}/${flavorName}/${project.name}-${flavorName}-debug-R.txt"
-                      }
-  
-                  }
-              }
-          }
-      }
+   classpath 'com.meituan.android.walle:plugin:1.1.6'
   ```
+  
+  在 app 的 build.gradle 中引入插件，设置依赖，进行配置
+  
+```java
+  apply plugin: 'walle'
+  
+  android{
+  	......
+  	 walle {
+          // 指定渠道包的输出路径
+        apkOutputFolder = new File("${project.buildDir}/outputs/channels");
+          // 定制渠道包的APK的文件名称
+        apkFileNameFormat = '${appName}-${channel}-${buildType}-v${versionName}-${versionCode}.apk';
+          // 渠道配置文件
+          channelFile = new File("${project.getProjectDir()}/channel")
+      }
+  }
+  
+  dependencies {
+  	implementation 'com.meituan.android.walle:library:1.1.6'
+  }
+```
 
-  3，打包一个有 bug 的 apk，注意打包的时候用多渠道
+  然后在 app 中新建一个channel 文件，不要指定任何后缀，里面写入渠道名称即可
 
-  ![1574305942128](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/1574305942128.png)
+  ![1574407076824](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/1574407076824.png)
 
-  ​	打包后的结构如下：
+  这样多渠道就配置完了。
 
-  ![1574306063414](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/1574306063414.png)
+  使用多渠道后打包需要用命令行或者插件来执行，这里使用插件的方式，如下：
 
-  ​	可以看到结构非常清楚
+  ![1574407202602](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/1574407202602.png)
 
-  4，修改 bug。指定线上版本路径(也就是刚打包好的)
+  一种是 debug，一种是 release。点击 replace就会生成相应的渠道文件，如下：
 
-  ​	首先修改 bug。
+  ![1574407324395](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/1574407324395.png)
 
-  ​	接着 指定 old.apk 路径，刚才打包好的
+  可以看到渠道已经生成了。在bakApk 中也生成了 基准包，这个 apk 不是用来发布的，而是用来生成补丁用的。生成补丁的方式就和上面讲的一样了。
+
+  将渠道文件中的 apk 发布后，出现 bug 。使用基准包生成 补丁文件，然后放在服务器中，进行下发即可。
+
+  如果使用 android 自带的渠道，需要每个渠道apk 都要生成补丁文件，而 使用 walle 只需要一个补丁即可，而且 使用 walle 生成渠道apk 的速度非常快。
+
+  我们可以app中获取渠道的信息，并且传给 友盟统计，这样非常方便，如下：
 
   ```java
-  ext {
-      tinkerEnable = true
-      tinkerID = "1.0"
-      tinkerOldApkPath = "${bakPath}/app-1121-11-12-41"
-      tinkerApplyMappingPath = "${bakPath}/app-1121-11-12-41"
-      tinkerApplyResourcePath = "${bakPath}/app-1121-11-12-41"
-      tinkerBuildFlavorDirector = "${bakPath}/app-1121-11-12-41"
-  }
+  //当前渠道
+  String channel = WalleChannelReader.getChannel(getApplication());
+  UMConfigure.init(getApplication(), "*********", channel, UMConfigure.DEVICE_TYPE_PHONE, "");
   ```
-
-  ​	可以看到这里和最开始我们使用的方式不同，因为这里使用了多渠道。所以这里只写一个外层的路径即可。还记得在 2 中配置的 project.afterEvaluate 吗？这个脚本就会遍历这个路径，然后完成多渠道的路径拼凑
-
-  5，生成补丁文件
-
-  ![345](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/345.png)
-
-  这里选择生成所有渠道的补丁文件
-
-  生成后的结构如下:
-
-  ![52](6%EF%BC%8CThinker%20%E4%BD%BF%E7%94%A8%E8%AF%A6%E8%A7%A3.assets/52.png)
-
-  6，说明
-
-  ​	生成补丁文件后就可以进行 bug 的修复了。这个上面已经说过了。这里就不罗嗦了。但是要注意，如果是正式的项目，多渠道的补丁文件生成后需要全部放在服务器上。**而客户端在请求是否需要加载补丁时需要向服务器传入当前App的渠道。然后服务器根据传入的渠道判断是否有补丁文件，最后返回对应渠道的补丁文件**
-
-  ​	补丁生成后注意看一下 log。看一下 old.apk 和 new.apk 后面的渠道名字是否相同，如果不相同，则补丁无法使用。我遇到了好多这种情况，不知道为啥
 
   
 
 - 如何自定义 Tinker 行为
 
-​		自定义TinkerResultService 改变 patch 安装成功后行为
+​		1，自定义TinkerResultService 改变 patch 安装成功后行为
 
 ​		一般情况下 patch 安装后 tinker 会杀掉进程，所以我们才会看到 patch 加载完成后程序闪退的问题，我们可以通过 重写 DefaultTinkerResultService 来自定义这个行为，如下：
 
@@ -745,15 +693,13 @@ public class CustomResultService extends DefaultTinkerResultService {
 
 ​			结果如下：
 
-​	
-
 ```java
 2019-11-21 16:59:42.335 6337-6404/? E/CustomResultService: patch加载成功，重启生效
 ```
 
 
 
-​	自定义 PatchListener 监听 patch receiver 事件
+2，自定义 PatchListener 监听 patch receiver 事件
 
 ​		也就是上面代码中的 DefaultPatchListener ，继承他即可，使用它可以完成 patch 的校验
 
@@ -788,6 +734,22 @@ public class CustomPatchListener extends DefaultPatchListener {
 
 ​		同样的要将初始化方法中第四个参数改为这个类对象
 
-### Tiner 源码
+3，其他的自定义
 
-​		
+```java
+ //加载补丁文件加载时的异常监听
+        LoadReporter loadReporter = new DefaultLoadReporter(applicationLike.getApplication());
+        //补丁文件合成阶段的异常监听，
+        PatchReporter patchReporter = new DefaultPatchReporter(applicationLike.getApplication());
+        PatchListener patchListener = new DefaultPatchListener(applicationLike.getApplication());
+        AbstractPatch upgradePatchProcessor = new UpgradePatch();
+        //完成 tinker 初始化
+        TinkerInstaller.install(applicationLike,
+                loadReporter,
+                patchReporter,
+                patchListener,
+                CustomResultService.class,
+                upgradePatchProcessor);
+```
+
+​	通过继承 loadReporter 和 patchReporter 可以实现异常的监听。当然还有一下其他的，可以去官网查看。
