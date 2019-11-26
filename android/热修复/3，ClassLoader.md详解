@@ -406,7 +406,7 @@ private DexFile(String sourceName, String outputName, int flags, ClassLoader loa
 
 ​	到这里就结束了，当前有兴趣的看以看一下[这篇文章](https://www.jianshu.com/p/5cf119d7103b)，对 DexClassLoader 和 PathClassLoader 讲的比较详细，
 
-## Android 中的动态加载比一般的 java 程序复杂在哪里
+
 
 - 有许多组件类需啊哟注册才能使用
 - 资源的动态加载很难
