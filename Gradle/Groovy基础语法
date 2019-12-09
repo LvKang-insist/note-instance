@@ -1,0 +1,86 @@
+### 基本类型
+
+​		其实在 Groovy 中是没有基本类型的，例如下所示：
+
+```groovy
+int x = 10;
+println(x.class)
+```
+
+​		打印结果如下：
+
+```
+class java.lang.Integer
+```
+
+​		可以看到他是一个 Integer 对象。其实在底层编译的时候已经将 int 装箱成了 对象。
+
+### 变量的定义
+
+​		groovy 定义变量有两种方式，分别是 强类型定义 和 若类型定义，强类型定义和 java 中的意义，但是弱类型定义是什么呢，如下：
+
+```
+//强类型定义方式
+int x = 10;
+println(x.class)
+
+//弱类型定义方式
+def x1 = 1;
+println(x1.class)
+def x2 = 3.14;
+println(x2.class)
+def x3 = "Android"
+println(x3.class)
+```
+
+​	结果如下：
+
+```
+class java.lang.Integer
+class java.lang.Integer
+class java.math.BigDecimal
+class java.lang.String
+```
+
+​	第二行 是大数据类型
+
+​	其实弱类型定义就是不指定具体的类型。通过值来确定它到底是什么类型。用 def 来定义
+
+​	如何选择呢？如果在本类中使用，则建议使用 def 类型。但是别的类也要用到这个变量。则尽量使用强类型定义；**def 声明的变量类型可以随时改变**，如 x1 是 Integer 。如果给 x1 赋值为 String，这样他就会变为 String。正是这个原因所以才不建议在 别的类使用这个变量时定义为 def。
+
+### 字符串
+
+​	常用的定义方式：
+
+```groovy
+//1,通过 单引号定义String ，和双引号没有任何区别 ,转义 '单引号 \'String \''
+def name = '单引号 String'
+println(name)
+
+
+//2,通过三个单引号定义String ,但定义的格式进行输出，
+def name1 = '''第一行
+第二行
+第三行'''
+println(name1)
+
+// 3,双引号 ,可扩展字符串，扩展后使用的不是String，而是GString类
+def name2 = "双引号"
+def hello = "hello ${name2}"
+println(name2)
+println(hello.class)
+
+//可扩展字符串使用 ,可以扩展任意的表达式
+def sum = "sum = ${5 - 6 - 6 + 12}"
+println(sum)
+
+def result = echo(sum)
+println(result)
+String echo(String message){
+    return message;
+}
+
+```
+
+通过上面这几种方式可以 定义字符串，其实一般最常用的就是 第三种了。注意扩展后的字符串就不是 String。而是 GString。不信的话可以打印看一下。
+
