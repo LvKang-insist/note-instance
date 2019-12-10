@@ -264,7 +264,6 @@ println sum;
 - 闭包返回值
 
   ```groovy
-  //如果没有 return ，默认返回 null
   def clouser = {
           //箭头前面是参数，后面是闭包体
       String name, int age ->
