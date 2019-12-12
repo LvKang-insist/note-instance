@@ -554,4 +554,269 @@ String str = "the 2 and 3 is 5"
 
   如果修改了 delegate 的值，则他和 owner 就不一样了。注意：this 和 owner 是不能被修改的，只有 delegate 可以修改
 
-  
+### 闭包委托策略
+
+​		首先看一段代码
+
+```java
+class Student {
+    String name
+    def pretty = {
+        "My name is ${name}"
+    }
+
+    String toString() {
+        pretty.call()
+    }
+}
+
+
+class Teacher {
+    String name
+}
+
+def student = new Student(name: '张三')
+def teacher = new Teacher(name: "老师")
+println student.toString()
+```
+
+​	定义了两个类，一个学生和一个老师。
+
+​	如果调用 student 的 toString 方法，会打印什么信息呢？
+
+```
+My name is 张三
+```
+
+​	可以看到打印的是张三。那如果要打印 Teacher 的 name 呢？这个时候就要用到 委托策略了
+
+```groovy
+student.pretty.delegate = teacher
+println student.toString()
+```
+
+​	将 teacher 传给 student 的闭包的 delegate  。这个时候在输出一下，你会发现没有任何改变。。。
+
+​	我们少改了一个东西， 默认的委托策略是 OWNER_FIRST ,即从 owner 中开始寻找对象 。owner 指向的是当前类 student。所以才没有发生任何变化。所以我们要修改委托策略：
+
+```groovy
+student.pretty.delegate = teacher
+student.pretty.resolveStrategy = Closure.DELEGATE_FIRST //修改委托策略
+println student.toString()
+//My name is 老师
+```
+
+​	修改为 DELEGATE_FIRST 后会从 delegate 中开始寻找，因为上面指定了 delegate 是 teacher ，所以输出就变了 
+
+​	修改 Teacher 中的 name 字段名字，如下：
+
+```java
+class Teacher {
+    String name1
+}
+def teacher = new Teacher(name1: "老师")
+```
+
+​	这个时候在运行会发现 运行的结果是 张三 ，因为 student 中的闭包里面用的是 name，而不是 name1，所以找不到 name 后就会寻找当前类的 name。 
+
+​	修改一下委托策略，如下：
+
+```groovy
+student.pretty.resolveStrategy = Closure.DELEGATE_ONLY
+```
+
+​	接着在运行一下会报错：
+
+```
+name for class: variable.Teacher Possible solutions: name1
+```
+
+​	在 Teacher 中 没有找到 name ，所以报错。这个策略只会从 delegate 中寻找，而不会从当前类中找
+
+​	委托策略一共有四种：
+
+```groovy
+public static final int OWNER_FIRST = 0;
+public static final int DELEGATE_FIRST = 1;
+public static final int OWNER_ONLY = 2;
+public static final int DELEGATE_ONLY = 3;
+```
+
+​	默认的就是 OWNER_FIRST ，即从 owner 中开始寻找。
+
+### 列表
+
+```groovy
+//列表
+def list = [1, 23, 324, -5, 6]  // groovy 中定义的方式，和上面的完全一样 ，并且添加元素。
+println list.class
+
+//排序
+list.sort()
+println list
+list.sort {
+    a, b ->
+        a > b ? 0 : -1
+}
+println list
+//按字符串长度排序
+def strList = ['a', 'ab', 'abc', 'aaaaa', 'b', 'cadfa', 'ace']
+strList.sort {
+    it ->
+        return it.size()
+}
+println strList
+
+//查找被 2 整除
+println list.findAll() {
+    return it % 2 == 0
+}
+// 判断是否列表中元素是否都能够被 2 整除
+println list.every {
+    return it % 2 == 0;
+}
+println list.min() //最小值
+println list.max() //最大值
+println list.min { Math.abs(it) } //绝对值 最小值
+println list.max { Math.abs(it) } //绝对值 最小值
+
+println list.count {
+    return it % 2  //统计，有多少偶数
+}
+
+//添加
+list.add(5)
+list.leftShift(4)
+println list + [4, 5]
+
+//删除
+list.remove(0) //删除下标为 0 的元素
+println list
+list.remove((Object) 4) //删除内容为 4 的元素
+println list
+println list.removeAt(0) //删除指定位置元素，并返回此元素
+list.removeElement(0) //删除
+println list - [1, 23] //删除 1 和 23
+
+```
+
+上面是列表的定义和常用的方法
+
+有没有感觉和数组的定义一样。当然数组的定义方式也变了，如下：
+
+```groovy
+//数组
+def array = [1, 3, 4, 5] as int[]   
+// groovy 中 数组的定义
+int[] array2 = [13, 4, 5, 6]  //强类型数组定义
+```
+
+### Map
+
+```groovy
+//定义
+def map = [red: '红色', yellow: '黄色', black: '黑色']
+
+//查找
+println map.get('red')
+println map['yellow']
+println map.black
+println map.find {
+    it.getValue().equals("红色")
+}
+//计数
+println map.count {
+    it.value.equals('黄色')
+}
+println map.findAll {
+    return it.key.equals('red') //key 为 red
+}.collect {
+    it.value  //key 为 red 的value
+}
+
+//分组
+println map.groupBy {
+    return it.value.equals('红色') ? '红色' : '其他颜色'
+}
+
+
+//添加
+map.put('blue', '绿色')
+map.green = '灰色'
+map.data = [a: 0, b: 1];
+println map
+println map.getClass() //默认是 LinkerHash ， 在定义的时候 通过 as HashMap 可转为 HashMap
+
+//遍历
+map.each {
+    def m ->
+        println m.key + "----" + m.value
+}
+//带下表的变量
+map.eachWithIndex { Map.Entry<String, String> entry, int i ->
+    println "index ${i}" + entry.key + "----" + entry.value
+}
+map.each {
+    key, value ->
+        println key + "----" + value
+}
+
+//排序
+println map.sort()
+println map.sort {
+    s1, s2 ->
+        return s1.key < s2.key ? 0 : -1
+}
+```
+
+以上为最常见的使用
+
+### 范围
+
+```groovy
+//定义
+def range = 1..29
+
+println range[0]//获取
+println range.contains(15) //是否包含
+println range.from //开始
+println range.to    //结束
+
+//遍历
+range.each {
+    print it
+}
+println ""
+for (i in range) {
+    print i
+}
+println ""
+
+//在 switch 中使用
+def sh = {
+    int x ->
+        def result = 0;
+        switch (x) {
+            case 0..10:
+                result = 1;
+                break
+            case 10..20:
+                result = 2;
+                break
+            case 20..30:
+                result = 3;
+                break
+        }
+        return result;
+}
+println sh.call(20)
+```
+
+```groovy
+public interface Range<T extends Comparable> extends List<T> {
+	......
+}
+```
+
+其实 Range 是 继承自 List。所以 List 有的方法他都有。
+
