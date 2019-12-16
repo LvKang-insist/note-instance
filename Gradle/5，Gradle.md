@@ -20,7 +20,7 @@
 
 ​		Gradle 的生命周期分为三个阶段，初始化阶段，配置阶段，执行阶段。
 
-- 初始化阶段：通过 setting.gradle 来判断项目有哪些项目需要初始化，加载需要被初始化的项目的build 文件，并为每个项目创建 project 对象。如果你的项目有好几个模块，你可以打开 setting.gradle ，每个模块的名字都在里面，如果删除某个模块的名字，则这个模块不会被构建。
+- 初始化阶段：通过 setting.gradle 来判断项目有哪些项目需要初始化，加载需要被初始化的项目的build.gradle 文件，并为每个项目创建 project 对象。如果你的项目有好几个模块，你可以打开 setting.gradle ，每个模块的名字都在里面，如果删除某个模块的名字，则这个模块不会被构建。
 
   ```groovy
   include  ':app', ':core', ':detegateManager', ':tabHome', ':tabShop', ':tabDiscover', ':tabMall', ':tabMine', ':ui'
