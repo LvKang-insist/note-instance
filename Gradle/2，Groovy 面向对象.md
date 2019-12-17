@@ -73,7 +73,7 @@ trait DefaultAction {
 
 
 
-![1576133124191](Groovy%20%E9%9D%A2%E5%90%91%E5%AF%B9%E8%B1%A1.assets/1576133124191.png)
+![1576133124191](2，Groovy 面向对象.assets/1576133124191.png)
 
 ​			这里我们来实现一下这个过程，我们从底部往上看，这样比较简单，首先还是一个 Person类：
 
@@ -227,7 +227,7 @@ class PersonManager {
 }
 ```
 
-这里调用一个不存在的方法。
+上面调用一个不存在的方法。
 
 ```groovy
 class ApplicationManager {
@@ -269,3 +269,4 @@ class Entry {
 ```
 
 可以看到通过动态注入的静态方法创建了 Person 对象
+

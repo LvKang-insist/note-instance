@@ -4,7 +4,7 @@
 
 ### Gradle 的组成
 
-![1576464053360](5%EF%BC%8CGradle.assets/1576464053360.png)
+![1576464053360](5，Gradle详解.assets/1576464053360.png)
 
 ​		gradle 完全使用的是 groovy 的语法。
 
@@ -14,7 +14,7 @@
 
 ### Gradle 生命周期
 
- ![img](5%EF%BC%8CGradle.assets/20190530121157928.png) 
+ ![img](5，Gradle详解.assets/20190530121157928.png) 
 
 
 
@@ -58,6 +58,8 @@ Root project 'CarSteward'
 
 ​		可以看到有一个 Root project ，其他的则是子project。从这个结构可以看出来 gradle 是以树的结构来管理所有的 project。但是这个树只有两层，因为我们不可能在 module 中新建一个模块
 
+​		Project 是脚本的核心，每个 project 的初始化都是通过 build.gradle 文件，所以构建的核心脚本都要编写在 build.gradle 中
+
 ​		每一个模块都必须有一个 build.gradle 文件，否则他就不会被任务是一个 project。
 
 ​		根 Project 的作用就是用来管理所有的子project，他提供了一系列的 api 来进行管理。
@@ -66,7 +68,7 @@ Root project 'CarSteward'
 
 ### Project Api
 
-![1576473263478](5%EF%BC%8CGradle.assets/1576473263478.png)
+![1576473263478](5，Gradle详解.assets/1576473263478.png)
 
 - project 相关的api
 
@@ -162,9 +164,11 @@ Root project 'CarSteward'
 
   为当前的 project 提供了新增 task  以及使用当前 project 中 task 的能力
 
+  task 内容有点多，需要单独提出来
+
 - 属性相关的 api
 
-  gradle 本身提供了一些属性，属性 api 让我们在 project 中可以添加额外的属性能力
+  gradle 本身提供了一些属性，**属性 api 让我们在 project 中可以添加额外的属性能力**
 
   ```java
   public interface Project extends Comparable<Project>, ExtensionAware, PluginAware {
@@ -520,4 +524,33 @@ Root project 'CarSteward'
   }
   ```
   
+  在 RootProject 的 gradle 中 dependencies 是为gradle添加插件的，而 子 project 则是给应用程序添加依赖。
   
+  如果项目中的依赖太多的话就会有可能导致依赖冲突。如一个第三方库依赖了别的第三方库，而指不定还有些库也依赖了别的第三方库。如果第三方库相同就会导致依赖冲突。有冲突后编译器就会报错。
+  
+  ```java
+  api('com.joanzapata.iconify:android-iconify-fontawesome:2.2.2') {
+          exclude group: 'com.android.support'
+  }
+  ```
+  
+  例如上面的 iconify 库，编译器报了依赖冲突，查看后发现是 suport 的冲突，可以使用  exclude 方法来解决排除掉 support 库即可。还有一种方式如下：
+  
+  ```java
+  exclude module : 'com.android.support'
+  ```
+  
+  如果你不想使用第三方库中所依赖的库，可以使用以下关键字禁用
+  
+  ```java
+  api('com.joanzapata.iconify:android-iconify-fontawesome:2.2.2') {
+          exclude group: 'com.android.support'
+          transitive false
+  }
+  ```
+  
+  将 transitive 设置为 false 后当前项目就不会调用到库中所依赖的库了。
+
+------
+
+​	到这里 Gradle 的基础就说的差不多了。已经常用的 api 使用等，关于 task 将会在下一篇中讲解。而且他是非常重要的！！！
