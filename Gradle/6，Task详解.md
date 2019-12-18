@@ -244,10 +244,136 @@ this build time is :28783
   Test
   ```
 
-- 通过输入输出来指定顺序
+  
 
-  ![1576563617648](6%EF%BC%8CTask%E8%AF%A6%E8%A7%A3.assets/1576563617648.png)
+- 通过 api 来指定顺序
 
-  看图，Task One 和 Task Two 都有输入和输出两个属性。把 Task One 的输出作为 Task Two 的输入就可以产生执行顺序！！
+  ```groovy
+  //执行顺序指定
+  task taskX {
+      doLast {
+          println 'taskX'
+      }
+  }
+  task taskY {
+      //指定执行在 TaskX 之后
+      mustRunAfter taskX
+      doLast {
+          println 'taskY'
+      }
+  }
+  task taskZ {
+      //指定执行在 TaskY 之后
+      mustRunAfter taskY
+      doLast {
+          println 'taskZ'
+      }
+  }
+  ```
+
+  输入命令：gradlew taskX taskZ TASKZ 	结果如下：
+
+  ```java
+  > Task :app:taskX
+  taskX
+  
+  > Task :app:taskY
+  taskY
+  
+  > Task :app:taskZ
+  taskZ
+  ```
 
   
+
+最后看一个例子：
+
+```java
+ext {
+    versionName = '1.0.1'
+    versionCode = 1
+    versionInfo = '第1个版本'
+    destFile = file('releases.json')
+    if (destFile != null && !destFile.exists()) {
+        destFile.createNewFile()
+    }
+}
+```
+
+上面的 ext 不会陌生吧，他是扩展属性。内部定义了一写属性，创建了一个文件 releases.json
+
+接着定义一个类，来保存这些属性：
+
+```java
+class VersionMsg {
+    String versionName
+    String versionCode
+    String versionInfo
+}
+```
+
+然后创建一个 Task。用来给文件中写入信息：
+
+```java
+task writeTask {
+    //为 task 指定输入
+    inputs.property('versionName', this.versionName)
+    inputs.property('versionCode', this.versionCode)
+    inputs.property('versionInfo', this.versionInfo)
+    //为 task 指定输出
+    outputs.file this.destFile
+    doLast {
+        //获取输入让的信息，返回 map
+        def map = inputs.getProperties()
+        File file = outputs.getFiles().getSingleFile()
+        def versionMsg = new VersionMsg(map)
+        def json = JsonOutput.toJson(versionMsg)
+        if (file.text != null && file.text.size() >= 0) {
+            def lines = file.readLines()
+            def lengths = lines.size() //一共多少行
+            file.withWriter {
+                writer ->
+                    if (lengths == 0) {
+                        writer.append("[")
+                        //将json串格式化后写入
+                        writer.append("${JsonOutput.prettyPrint(json)}\n")
+                    } else {
+                        for (int i = 0; i < lines.size(); i++) {
+                            if (i == lengths - 1) {
+                                writer.append(",")
+                                break
+                            }
+                            writer.append(lines[i] + "\n")
+                        }
+                        writer.append("${JsonOutput.prettyPrint(json)}\n")
+                    }
+                    writer.append("]")
+            }
+        }
+    }
+}
+```
+
+inputs 和 outputs 是 Task 的属性，inputs 可以是任意类型的对象，而 outputs只能是文件(或文件夹)
+
+上面这段代码首先是指定了输入和输出，然后获取输入的文件，并传入到 VersionMsg类中，接着将这个类转为 json 串。最后将 json 写入到文件中。
+
+注意要使用 JsonOutput ，必须先导包，否则不能使用，如下：
+
+```java
+import groovy.json.JsonOutput
+```
+
+最终执行 gradlew writeTask 命令，执行前请修改信息，写入的文件如下：
+
+![1576647952023](6%EF%BC%8CTask%E8%AF%A6%E8%A7%A3.assets/1576647952023.png)
+
+这就是输出的版本信息，其中 contentHash 和 originalClassName 是自动生成的。
+
+在这个过程中也遇到了一个问题：在执行 Task 的时候，如果 Task 内涉及的内容没有发生任何变化，那么这个 task 不会执行。如果上面的执行完第三次后没有修改任何地方，在继续执行 Task 则不会执行。但是只要有任何修改，task 都会执行：如将 文件中的 json 传格式化一下，修改一下等，再次执行命令，则 task 就会执行。
+
+------
+
+到这里就完了，但是还是有些疑惑，在学习的过程中，看到可以使用 输入输出来指定执行的顺序，但是我却没弄出来。还有就是指定在 build Task 后执行，但是定义的 task 没有 execute() 方法，一直保存，无法在代码中使其运行。
+
+希望有解决过的同学讲一哈，多谢

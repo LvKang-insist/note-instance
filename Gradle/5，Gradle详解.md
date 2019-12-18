@@ -27,11 +27,11 @@
   rootProject.name='CarSteward'
   ```
 
-- 配置阶段，执行各个项目下的 build.gradle 脚本完成 project 的配置，构造 Task 任务依赖关系图以便在执行阶段按照依赖关系执行 Task。
+- 配置阶段，执行各个项目下的 build.gradle 脚本处理依赖等。完成 project 的配置，构造 Task 链表(这里的链表指的是存在依赖关系的 task 的集合，不是数据结构链表)
 
 - 执行阶段
 
-  执行具体的 task 及其依赖的 task
+  根据 task 链表执行某一个特定的task，这个被 task 所以来的其他task都会被先执行
 
 
 
