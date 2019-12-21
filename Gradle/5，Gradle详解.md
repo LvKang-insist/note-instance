@@ -18,7 +18,86 @@
 
 
 
-​		Gradle 的生命周期分为三个阶段，初始化阶段，配置阶段，执行阶段。
+​	Gradle 生命周期回调方法的时机：
+
+```java
+/**
+ * 配置阶段开始前回调监听
+ */
+this.beforeEvaluate {
+}
+
+/**
+ * 配置阶段完成后回调监听
+ */
+this.afterEvaluate {
+    println '配置阶段完成...'
+}
+
+
+/**
+ * build 执行完毕
+ */
+this.buildFinished {
+  
+}
+/**
+ * 监听 task 的创建
+ */
+tasks.whenTaskAdded { task ->
+    task.ext.srcDir = 'src/main/java'
+}
+
+/**
+ * 监听某个task开始执行，结束执行
+ */
+gradle.taskGraph.addTaskExecutionListener(new TaskExecutionListener() {
+    @Override
+    void beforeExecute(Task task) {
+
+    }
+
+    @Override
+    void afterExecute(Task task, TaskState state) {
+
+   }
+})
+```
+
+```java
+//其他的监听
+this.gradle.addBuildListener(new BuildListener() {
+    @Override
+    void buildStarted(Gradle gradle) {
+		//在构建启动时调用
+    }
+
+    @Override
+    void settingsEvaluated(Settings settings) {
+		//在加载和计算构建设置时调用,设置对象已完全配置完成可用来加载构建项目
+    }
+
+    @Override
+    void projectsLoaded(Gradle gradle) {
+		//从设置创建构建的项目时调用。这些项目都没有评估
+    }
+
+    @Override
+    void projectsEvaluated(Gradle gradle) {
+		//构建的项目评估后调用
+    }
+
+    @Override
+    void buildFinished(BuildResult result) {
+		//构建完成时调用
+    }
+})
+
+```
+
+​	
+
+​	Gradle 的生命周期分为三个阶段，初始化阶段，配置阶段，执行阶段。
 
 - 初始化阶段：通过 setting.gradle 来判断项目有哪些项目需要初始化，加载需要被初始化的项目的build.gradle 文件，并为每个项目创建 project 对象。如果你的项目有好几个模块，你可以打开 setting.gradle ，每个模块的名字都在里面，如果删除某个模块的名字，则这个模块不会被构建。
 
