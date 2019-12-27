@@ -1,0 +1,163 @@
+### 基本类型
+
+<img src="1%EF%BC%8C%E5%86%85%E7%BD%AE%E7%B1%BB%E5%9E%8B.assets/1577430764926.png" alt="1577430764926" style="zoom:50%;" />
+
+
+
+Kt 中没有包装，只有基本类型。
+
+
+
+### 声明变量
+
+<img src="1%EF%BC%8C%E5%86%85%E7%BD%AE%E7%B1%BB%E5%9E%8B.assets/1577430970554.png" alt="1577430970554" style="zoom:67%;" />
+
+
+
+
+
+<img src="1%EF%BC%8C%E5%86%85%E7%BD%AE%E7%B1%BB%E5%9E%8B.assets/1577431104847.png" alt="1577431104847" style="zoom:80%;" />
+
+​		类型写在变量的后面，var 是可读写和 java 中的一样，而 val 则是不可变的，比较像 java 中的final。
+
+​		Kt 中可以进行类型推到，根据值可以推断出他的类型，所以在定义的时候可以如下所示：
+
+<img src="1%EF%BC%8C%E5%86%85%E7%BD%AE%E7%B1%BB%E5%9E%8B.assets/1577431256445.png" alt="1577431256445" style="zoom:80%;" />
+
+​		Kt 中定义 Long 类型必须以 L 结尾，如：
+
+<img src="1%EF%BC%8C%E5%86%85%E7%BD%AE%E7%B1%BB%E5%9E%8B.assets/1577431393428.png" alt="1577431393428" style="zoom:80%;" />
+
+​		Kt 中不能隐式的进行类型的转换，如把 Int 赋值给 Long。需要如下操作：
+
+```kotlin
+val e: Int = 10
+val f: Long = e.toLong()
+//注意 I 和 L 必须大写
+```
+
+​		Kt 中 == 比较内容，=== 比较引用
+
+### 数组
+
+<img src="1%EF%BC%8C%E5%86%85%E7%BD%AE%E7%B1%BB%E5%9E%8B.assets/1577432773265.png" alt="1577432773265" style="zoom:80%;" />
+
+创建数组
+
+```
+ val c0 = intArrayOf(1, 3, 3, 4, 5)
+ val c1 = IntArray(4) { it + 1 }
+ //it 是内置的。有的类似 groovy 闭包中的 it。
+ //这里的 it 表示的是下标，+1 则是对应的值 ,对应数组的值就是 1 2 3 4
+```
+
+```kotlin
+ val c1 = IntArray(4) { it + 1 }
+ //遍历
+ for (i in c1) {
+ println(i)
+ }
+ c1.forEach {
+ println(it)
+ }
+```
+
+判断一个数是否在 数组中
+
+```kotlin
+ //和 for 循环中的 in 不一样，这里是包含的关系，1 是否在 c1 数组中 ， ！in 表示取反
+ if (1 in c1){
+ 	println("true")
+ }
+```
+
+### 区间
+
+```kotlin
+//创建
+val intRange = 1..10 //一到十   类型 IntRange
+val charRange = 'a'..'z'        // CharRange
+val longRange = 1L..100L        //LongRange
+val floatRange = 1f..10f      // FloatRange
+println(intRange.joinToString())
+println(charRange.joinToString())
+// FloatRange 是不可数的，没有打印的方法
+
+//开区间
+val intRangeExclusive = 1 until 10  //[1,10)
+println(intRangeExclusive.joinToString()) //1, 2, 3, 4, 5, 6, 7, 8, 9
+//倒序区间
+val intRangeReverse = 10 downTo 1
+
+//区间步长
+val intRangeWithStep = 1..20 step 2 // 1,3,5,7....
+println()
+
+//遍历，
+//可以使用区间的形式来遍历数组
+val c0 = intArrayOf(1, 2, 3, 4, 5)
+// 0 表示从第 0 个开始遍历，相当于 java 循环中 i = 0
+for (i in 0 until c0.size) {
+	println(c0[i])
+}
+//上面这种方式的简化版，只能从第一个开始
+for (i in c0.indices) {
+	println(c0[i])
+}
+```
+
+### 集合框架
+
+- 增加了 “不可变” 集合的接口
+- 复用 Java API 的所有实现类型
+- 提供了丰富易用的方法，如 forEach/map/flatMap
+- 增加运算符级别的支持，简化集合框架的访问
+
+![1577436337970](1%EF%BC%8C%E5%86%85%E7%BD%AE%E7%B1%BB%E5%9E%8B.assets/1577436337970.png)
+
+ 
+
+```kotlin
+ //不可变的 List，不能添加或者删除元素，没有这些方法
+    val intList: List<Int> = listOf(1, 3, 4)
+
+    //可变的 List，和 java 中没有任何区别
+    val intList2: MutableList<Int> = mutableListOf(1, 2, 3)
+    intList2.add(4)
+    intList2 += 5   //本质上和 add 一样,Kt中运算符可进行重载
+    intList2 -= 4   //等价于 remove
+
+    intList2[0] = 1     //写
+    val r = intList[2]  //读
+
+    for (i in 0 until intList2.size) {
+        println(intList2[i])
+    }
+
+    //不可变 Map
+    val map: Map<String, Any> = mapOf("name" to "张三", "age" to 30)
+
+    //可变的 Map
+    val map2: HashMap<String, Any> = hashMapOf("name" to "李四", "age" to 30)
+    // Any 等价于 Object，所有类型的父类
+    map2["name"] = "张三".any()   //等价于 set
+    println(map2["name"])       //等价于 get
+
+    //使用 java 的方式创建集合
+    val JavaList = ArrayList<String>()
+
+    // Pair 类 ，键值对
+    var pair = Pair("hello", "Kotlin")
+    var pair1 = "hello" to "Kotlin"
+    var first = pair.first      //相当于 key
+    var sencond = pair.second   //相当于 Value
+    var (x, y) = pair           //解构，将 key 和 value 拿出了给 x y
+
+    // Triple   使用和上面的一样
+    val triple = Triple("x", 2, 4)
+    var first1 = triple.first
+    var second1 = triple.second
+    var third = triple.third
+    val (x1, y1, z1) = triple       //解构
+```
+
