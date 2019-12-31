@@ -161,3 +161,210 @@ for (i in c0.indices) {
     val (x1, y1, z1) = triple       //解构
 ```
 
+
+
+### 函数
+
+![1577757007934](1%EF%BC%8C%E5%86%85%E7%BD%AE%E7%B1%BB%E5%9E%8B.assets/1577757007934.png)
+
+Kt 中 void 使用 Unit 表示，如果 返回 Unit ，则可以不用写返回值，因为编译器回进行推倒，如下：
+
+```kotlin
+fun main(args: Array<String>) {
+ 
+}
+```
+
+如果返回值为 Unit ，则可以不用写。
+
+**函数 vs 方法**
+
+- 方法可以认为是函数的一种特殊类型
+- 从形式上，有 receiver 的函数即为方法
+- 所谓的方法就是外面套了一个类，而 函数则可以直接定义。
+
+**函数的类型**
+
+```kotlin
+fun foo(){ }  // () -> Unit
+//无参数，返回值为 Unit
+```
+
+```kotlin
+fun foo(p0:Int):String{}  (Int) -> String 
+//参数是 Int ，返回值为 String
+```
+
+```kotlin
+Class Foo{
+	fun bar(p0:String ,p1:Long):Any{
+		
+	}
+}
+Foo.(String,Long) -> Any //参数 String ，Long，返回值 Any
+// Foo 就是 bar 方法的 receiver。其实可以这样写
+(Foo,String,Long) -> Any
+
+```
+
+**函数引用**
+
+ 函数的引用类似于 C 语言中的函数指针，可用于函数传递
+
+```kotlin
+fun foo(){}			//获取函数引用  ::fun
+fun foo(p0:Int):String{}	//    ::fun ,如果重载，由编译器确定调用那个 foo 方法，不能确定则报错
+class Foo{
+    fun bar(p0:String ,p1:Long):Any{
+        
+    }
+}
+//	Foo::bar 
+```
+
+接收上面的函数，将函数赋值给变量
+
+```kotlin
+val f:() -> Unit = ::foo		//类型可以进行推断：可以如下写 	val f = ::foo
+val g:(Int) ->String = ::foo			//val g = ::foo
+val h:(FOO,String,Long) ->Any = Foo:bar	//val h = Foo:bar
+```
+
+赋值对象中的方法
+
+```kotlin
+val foo = Foo()		//创建对象
+val m:(String,Long) -> Any = foo:bar 
+```
+
+**例子**
+
+```java
+fun main(args: Array<String>): Unit {
+
+    val x1: (Foo, String, Long) -> Int = Foo::bar
+    val x2 = Foo::bar
+    val x3: Foo.(String, Long) -> Int = Foo::bar
+    val x4: Function3<Foo, String, Long, Int> = Foo::bar
+    //上面这四种方式等价
+    val y = x1
+    val z: (Foo, String, Long) -> Int = x3
+    yy(z)//讲函数进行传递
+   
+
+    val f1 = ::f
+
+    val foo = Foo()
+    val m = foo::bar
+    
+}
+
+fun f() {
+
+}
+
+
+/**
+ * 接收一个函数作为参数
+ */
+fun yy(p: (Foo, String, Long) -> Int) {
+    p(Foo(), "Hello", 345L)
+}
+
+
+class Foo {
+    fun bar(p0: String, p1: Long): Int {
+        println(p0 + p1)
+        return p1.toInt()
+    }
+
+}
+```
+
+**变长参数**
+
+```kotlin
+fun multiParameters(vararg ints: Int) {
+    // ints 可以当做数组使用
+    println(ints.contentToString())
+}
+
+multiParameters(1, 5, 6, 34, 2, 4)
+```
+
+**多返回值**
+
+```kotlin
+fun multiReturnValues(): Triple<Int, Long, Double> {
+    return Triple(2, 3L, 34.00)
+}
+
+    val (a, b, c) = multiReturnValues() //伪多返回值
+```
+
+**默认参数**
+
+```kotlin
+fun defaultParameter(x: Int = 2, y: String, z: Long = 0L) {
+
+}
+
+//x 和 z 为默认值
+defaultParameter(y = "Hello")
+```
+
+例子：**四则运算器**
+
+```kotlin
+fun main(vararg args: String): Unit {
+
+    if (args.size < 3) {
+        return showHelp()
+    }
+
+    val operators = mapOf(
+        "+" to ::plus,
+        "-" to ::minus,
+        "*" to ::times,
+        "/" to ::div
+    )
+
+    val op = args[1]
+    //为 null 就直接 return
+    val opFunc = operators[op] ?: return showHelp()
+
+    try {
+        println("Input:${args.joinToString()}")
+        println("Output:${opFunc(args[0].toInt(), args[2].toInt())}")
+    } catch (e: Exception) {
+        println("Intvalid Aruments")
+        showHelp()
+    }
+
+
+}
+
+fun plus(arg0: Int, arg1: Int): Int {
+    return arg0 + arg1
+}
+
+fun minus(arg0: Int, arg1: Int): Int {
+    return arg0 - arg1
+}
+
+fun times(arg0: Int, arg1: Int): Int {
+    return arg0 * arg1
+}
+
+fun div(arg0: Int, arg1: Int): Int {
+    return arg0 / arg1
+}
+
+
+fun showHelp() {
+    println(""" Simple Calculator 
+                Input:3*4 
+                Output:12""".trimIndent())
+}
+```
+
