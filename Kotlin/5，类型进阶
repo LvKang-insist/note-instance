@@ -1,0 +1,171 @@
+#### 类的构造器
+
+- 构造器
+
+  - 主构造器
+
+    ```kotlin
+    //age 全局可用，name 只是普通的构造器参数
+    class Person(var age: Int, name: String) {
+        
+    }
+    ```
+
+  - init 块
+
+    ```kotlin
+    //age 全局可用，name 只是普通的构造器参数
+    class Person(var age: Int, name: String) {
+    
+        val n: String
+        init {
+            n = name
+        }
+    }
+    ```
+
+    ​	**init 块会在构造方法的最前面执行**,可用于初始化
+
+  - 属性初始化
+
+    ​	可在 init 块中进行初始化
+
+  - 重写 get / set 
+
+    ```kotlin
+    class Person() {
+        var name: String = ""
+            get() {
+                return "hello $field"
+            }
+            set(value) {
+                field = "hello $value"
+            }
+    }
+    ```
+
+- 副构造器
+
+  - 不定义主构造器
+
+    ```kotlin
+    open class A {
+        constructor(name: String) {
+            println("A的 一个参数构造器")
+        }
+    
+        constructor(name: String, age: Int) {
+            println("A的 两个参数构造器")
+        }
+    
+        init {
+            println("A的 init")
+        }
+    }
+    
+    class B : A {
+    
+        constructor(name: String) : this(name, 20) {
+            println("B的 一个参数构造器")
+        }
+    
+        constructor(name: String, age: Int) : super(name, age) {
+            println("B的 两个参数的构造器")
+        }
+    }
+    
+    fun main() {
+        var lv = B("张三")
+    }
+    ```
+
+    ```kotlin
+    A的 init
+    A的 两个参数构造器
+    B的 两个参数的构造器
+    B的 一个参数构造器
+    ```
+
+  - 主构造器默认参
+
+    ```
+    open class A(age: Int, name: String = "张三") {
+    }
+    
+    fun main() {
+        var a = A(20)
+    }
+    ```
+
+- 工厂函数
+
+  ```kotlin
+  open class A(age: Int, name: String = "张三") {
+  
+      fun A(): A {
+          return A(20)
+      }
+  
+      fun A(age: Int, name: String): A {
+          return A(age, name)
+      }
+  
+  }
+  ```
+
+  ​	**函数的名字可以和类名相同**
+
+#### 可见性对比
+
+| 可见性对比    | java           | Kotlin             |
+| ------------- | -------------- | ------------------ |
+| **public**    | 公开           | 与 Java 相同，默认 |
+| **internal**  | X              | 模块内可见         |
+| **default**   | 包内可见，默认 | X                  |
+| **protected** | 包内及子类可见 | 类内及子类可见     |
+| **private**   | 类内可见       | 类或文件可见       |
+
+​	模块的概念：直观的讲，大致可以认为是一个 **Jar包**，一个 **aar**
+
+- IntelliJ IDEA 模块
+
+- Maven 模块
+
+- Gradle SourceSet
+
+- Ant 任务中一次调用<kotlinc> 的文件
+
+  如果定义了 internal 的函数，但是不想让 java 访问，可以使用 @JvmName("") 注解来实现，在 java 中调用的时候注解测参数将会成为方法的名字，且报错，不可以调用。
+
+#### 构造器的可见性
+
+- 给构造器加注解的时候 constructor 就必须写出来
+- 如果使用单例，或者工厂等，就需要将构造器弄成私有的
+
+#### 顶级声明的可见性
+
+- 指文件内直接定义的属性，函数，类等
+- 顶级声明不支持 protected
+- 顶级声明被 private 修饰后表示文件内部可见
+
+#### 类属性的延时初始化
+
+- 类属性必须在构造时初始化
+
+- 某些成员只有在类构造后才会被初始化，例如android 中在 onCrate 中进行 findViewById
+
+解决办法
+
+1. 直接判空，或者类型强转
+
+2. 使用 lateinit 关键字
+
+   lateinit 会让编译器忽略变量的初始化，不支持 Int 等基本类型
+
+   开发者必须在完全确定变量值生命周期的情况下使用 lateinit
+
+   不要在复杂的逻辑中使用 lateinit
+
+3. 使用 lazy
+
+   只有在首次使用的时候被访问执行
