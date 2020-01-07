@@ -169,3 +169,380 @@
 3. 使用 lazy
 
    只有在首次使用的时候被访问执行
+   
+   
+
+#### 代理Delegate
+
+​	接口代理：对象 X 代替当前类 A 实现接口 B 的方法
+
+​	属性代理：对象 x 代理属性 a 实现 getter/setter 方法
+
+```kotlin
+//接口代理
+interface Api {
+    fun a()
+    fun b()
+    fun c()
+}
+
+class ApiImpl : Api {
+    override fun a() {}
+
+    override fun b() {}
+
+    override fun c() {}
+}
+
+class ApiWrapper(val api: Api)
+    //对象 api 代替类  ApiWrapper 实现接口 API
+    : Api by api {
+
+    override fun c() {
+        println("-------- c")
+        api.c()
+    }
+
+}
+```
+
+属性代理：
+
+​	属性代理是借助于代理设计模式，把这个模式应用于一个属性时，他可以将访问器的逻辑代理给一个辅助对象
+
+​	可以简单理解为属性的 setter，getter 访问器内部实现是交给一个代理对象来实现，相当于一个代理对象替换了原来字段的读写过程，而暴露在外部属性的操作还是不变的，照样是属性赋值和读取，只是 setter，getter内部实现变了
+
+**1，Lazy**	
+
+​	当变量第一次使用是进行初始化，可以实现懒加载
+
+```kotlin
+//属性代理
+class Person(val name: String) {
+
+    //lazy返回的对象代理了属性 firstName 的 getter
+    val firstName by lazy {
+        println("初始化-----")
+        "345"
+    }
+}
+```
+
+```kotlin
+
+fun main() {
+    val p = Person("")
+    println(p.firstName)
+    println(p.firstName)
+}
+```
+
+```kotlin
+初始化-----
+345
+345
+```
+
+只有在第一次调用的时候才会执行。感觉比较适合安卓
+
+初始化默认是线程安全的，通过 synchronized 锁来保证
+
+不过还是会影响性能，如果 lazy 的初始化不会涉及到多线程，那么可以传入 LazyThreadSafetyMode.NONE  来取消同步锁
+
+ LazyThreadSafetyMode有三种模式：SYNCHRONIZED（默认模式）、PUBLICATION、NONE 
+
+ 其中PUBLICATION模式使用了AtomicReferenceFieldUpdater（原子操作）允许多个线程同时调用初始化流程。 
+
+**2，自定义属性代理**
+
+```kotlin
+class Example {
+    var p: String by Delegate()
+}
+
+
+class Delegate {
+    operator fun getValue(thisRef: Any, property: KProperty<*>): String {
+        return "代理 get"
+    }
+
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, value: String) {
+        println("代理 set")
+    }
+}
+
+
+fun main() {
+    val e = Example()
+    println(e.p)
+    e.p = "345"
+}
+```
+
+```kotlin
+代理 get
+代理 set
+```
+
+**3，observable** 
+
+变量被赋值时会发出通知
+
+Delegates.observable 可以传入两个参数，一个是初始值，另一个是变量被赋值时的 handle 方法
+
+```kotlin
+class User {
+    var name: String by Delegates.observable("345") { property, oldValue, newValue ->
+        println("$oldValue -> $newValue")
+    }
+}
+
+fun main() {
+    val user = User()
+    user.name = "first"
+    user.name = "second"
+}
+
+```
+
+输出
+
+```kotlin
+345 -> first
+first -> second
+```
+
+只要 user.name 被赋值，监听就会触发
+
+类似的还有 vetoable ，只不过 vetoable 是在赋值前触发，observable 是在赋值后触发
+
+**4，vetoable**
+
+使用 vetoable 进行拦截
+
+```kotlin
+class User {
+    var name: String by Delegates.vetoable("345") { property, oldValue, newValue ->
+        if (newValue == "first") {
+            return@vetoable true    //返回 true 表示first 可以赋值给 name
+        }
+        return@vetoable false //返回false 表示拦截其他赋值操作
+    }
+}
+
+fun main() {
+    val user = User()
+    user.name = "first"
+    println(user.name)
+    user.name = "second"
+    println(user.name)
+}
+
+```
+
+```kotlin
+first
+first
+```
+
+**5，对 map 的代理**
+
+```kotlin
+fun main() {
+
+    val map = mutableMapOf("name" to "张三", "age" to 1)
+
+    var name: String by map
+    println(name)
+
+    name = "李四"
+    println(map["name"])
+
+}
+```
+
+```kotlin
+张三
+李四
+```
+
+**6，局部变量代理**
+
+```kotlin
+fun main() {
+
+    a {
+        345
+    }
+}
+
+
+fun a(sum: () -> Int) {
+    val s by lazy(sum)
+
+    println(s) //345
+}
+```
+
+**案例：使用属性代理读写 Properties**
+
+```kotlin
+class PropertiesDelegate(private val path: String, private val defaultValue: String = "") {
+
+
+    private lateinit var url: URL
+
+    private val properties: Properties by lazy {
+
+        val prop = Properties()
+        url = try {
+//            查找具有给定名称的资源
+            javaClass.getResourceAsStream(path).use {
+                //从输入流中读取属性列表(键值对)
+                prop.load(it)
+            }
+            javaClass.getResource(path)
+        } catch (e: Exception) {
+            try {
+                ClassLoader.getSystemClassLoader().getResourceAsStream(path).use {
+                    prop.load(it)
+                }
+                ClassLoader.getSystemClassLoader().getResource(path)!!
+            } catch (e: Exception) {
+                FileInputStream(path).use {
+                    prop.load(it)
+                }
+                URL("file://${File(path).canonicalPath}")
+            }
+        }
+        prop
+    }
+
+
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): String {
+        //获取属性信息
+        return properties.getProperty(property.name, defaultValue)
+    }
+
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, value: String) {
+        //设置属性信息
+        properties.setProperty(property.name, value)
+        //写入到文件，第二个参数为注释信息
+        File(url.toURI()).outputStream().use {
+            properties.store(it, "Hello!!l")
+        }
+    }
+
+}
+
+abstract class AbsProperties(path: String) {
+    protected val prop = PropertiesDelegate(path)
+}
+
+
+class Config : AbsProperties("Config.properties") {
+    var author by prop
+    var version by prop
+    var desc by prop
+}
+
+fun main() {
+    val config = Config()
+    print(config.author)    //getValue
+    config.author = "345"   //setValue
+    println(config.author)
+}
+```
+
+**单例**
+
+```kotlin
+//单例的定义，默认是恶汉模式
+object Signleton {
+    var x = 2
+
+    //模拟 java 中静态方法，只有在 object 中可以使用
+    @JvmStatic
+    fun y() {
+        println("---------")
+    }
+}
+// Signleton.INSTANCE.getX(); 从 java 中调用该类
+//        Signleton.y();  JvmStatic :静态的
+
+class Foo {
+    //伴生对象，与普通类同名的 object
+    //相当于java中的 public static void y(){}
+    companion object {
+        @JvmStatic
+        fun y() {
+            println("y")
+        }
+
+        //生成静态 Field
+        @JvmField
+        var y: Int = 2
+    }
+
+    //属性可以使用 JvmField，生成非静态 Field，
+    @JvmField
+    var x: Int = 2
+}
+
+fun main() {
+
+    Signleton.x
+    Signleton.y()
+
+
+    println(Foo.y)
+    println(Foo.y())
+}
+
+```
+
+#### 内部类
+
+ 
+
+```kotlin
+fun main() {
+
+
+    //创建非静态内部类对象
+    val inner = Outer().Inner()
+    //创建静态内部类对象
+    val staticInner = Outer.StaticInner()
+
+
+    //匿名内部类，可以实现多个接口，并且继承一个类
+    object : Runnable, Cloneable {
+        override fun run() {
+
+        }
+    }
+
+
+}
+
+
+class Outer {
+
+    //非静态内部类
+    inner class Inner {
+
+    }
+
+    //静态内部类
+    class StaticInner {
+
+    }
+
+
+    //一旦定义出来，就会被初始化
+    object HH {
+
+    }
+}
+```
+
