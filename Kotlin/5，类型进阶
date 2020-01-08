@@ -546,3 +546,315 @@ class Outer {
 }
 ```
 
+#### 数据类
+
+```kotlin
+data class Book(val id: Long, val name: String, val author: String) {
+    
+}
+```
+
+|           | JavaBean               | data class     |
+| --------- | ---------------------- | -------------- |
+| 构造方法  | 默认无参构造           | 属性作为参数   |
+| 字段      | 字段私有，get/set 公开 | 属性           |
+| 继承性    | 可继承，可被继承       | 不可被继承     |
+| component | 无                     | 相等性，解构等 |
+
+data class 为我们做了什么
+
+​		编译器会根据我们在构造函数中声明的属性自动导出下列成员：
+
+- equals / hashCode
+
+- toString
+
+- componentN()
+
+- copy()
+
+  如果在类中明确定义或继承了上面的基础方法，则不会自动生成
+
+限制：
+
+- 构造函数至少要一个参数
+- 所有构造函数的参数都必须使用 val 或者 var 标记
+- data class 不可以是 abstract，open sealed or inner
+- 不可以实现接口
+
+数据类自带的结构方法：componentN()
+
+```kotlin
+fun main() {
+
+    val book = Book(1L, "百科", "张三")
+    val (id, name, author) = book
+    println("$id  $name $author")
+
+}
+```
+
+实际上，结构是调用了 Book 类的 component1() 和 component2()  ，component3()。
+
+如何作为 Java Bean 使用呢
+
+**需要解决两个限制：**
+
+​	至少一个构造器，和 final。data class 是不可被继承的。
+
+​	如果解决呢：NoArg 插件，AllPoen 插件
+
+在 build.gradle 中添加插件
+
+```kotlin
+plugins {
+	......
+    id("org.jetbrains.kotlin.plugin.noarg").version("1.3.50")
+    id("org.jetbrains.kotlin.plugin.allopen").version("1.3.50")
+}
+
+
+noArg {
+    //执行 init 块中的代码
+    invokeInitializers = true
+    annotation("com.kotlin.study.five.PoKo")
+}
+
+allOpen {
+    annotation("com.kotlin.study.five.PoKo")
+}
+
+```
+
+注意build.gradle 使用的是 kt 的代码
+
+还需要定义一个注解：就是 annotation指定路径下的 PoKo 注解
+
+```kotlin
+public @interface PoKo {
+}
+```
+
+空的即可
+
+**使用**
+
+```kotlin
+//使用该注解后会在字节码中生成一个无参构造，
+//可被继承
+@PoKo
+data class Book(val id: Long, val name: String, val author: String) {
+    init {
+        println("------")
+    }
+}
+```
+
+```java
+fun main() {    val b = Book::class.java.newInstance()}
+```
+
+#### 枚举
+
+```kotlin
+fun main() {
+
+    S1.Busy.run()
+    S1.Idle.run()
+
+    val state = State.Busy
+
+    //条件分支
+    val value = when (state) {
+        State.Idle -> {
+            0
+        }
+        State.Busy -> {
+            1
+        }
+    }
+
+    //枚举的比较，因为是有顺序的，所以可以。需要重载运算符
+
+    //枚举的区间，因为有顺序
+}
+
+//枚举，父类是 Enum，所以不能继承其他类
+enum class State {
+    Idle,
+    Busy
+}
+
+//带参数的构造
+enum class S(val id: Int) {
+    Idle(0),
+    Busy(1)
+}
+
+//实现接口的枚举
+enum class S1 : Runnable {
+    Idle {
+        //实现字节的 run 方法
+        override fun run() {
+            println("For Idle")
+        }
+    },
+    Busy;
+
+    override fun run() {
+        println("For every state.")
+    }
+
+}
+
+//为枚举定义扩展
+fun State.next(): State {
+    return State.values().let {
+        val next = (ordinal + 1) % it.size
+        it[next]
+    }
+}
+```
+
+- 枚举
+  - 枚举的基本知识：定义方法，属性，构造器，接口实现
+  - 为枚举定义扩展
+  - 分支表达式
+  - 比较与区间
+
+#### 密封类
+
+- 密封类是一种特殊的抽象类，不能被实例化，但是可以有抽象成员
+- 密封类的子类定义在与自身相同的文件中
+- 密封类的子类个数是有限的
+
+```kotlin
+
+fun main() {
+
+    //只能通过子类实例化对象
+    val play: PlayerState = Start("小鸟")
+    
+}
+
+
+//首先是一个抽象类，其次是一个密封类，构造器是私有的
+sealed class PlayerState {
+
+}
+
+class Start(val song: String) : PlayerState() {
+
+}
+
+class Stop : PlayerState() {
+
+}
+
+```
+
+- 密封类
+  - 概念：抽象，子类可数，子类封闭
+  - 构造器私有：无法在外部文件中继续密封类
+  - 子类定义：必须定义在当前文件中
+  - 与枚举对比：enum：实例可数，sealed：子类可数
+
+#### 内联类
+
+- 内联类是对某一个类型的包装
+- 内联类是类似于 Java 装箱类型的一种类型
+- 编译器会尽可能使用被包装的类型进行优化
+
+```kotlin
+fun main() {
+
+    var x = BoxInt(3)
+
+    val newValue = x.value * 200
+    println(newValue) //600
+    x++
+    println(x)  //BoxInt(value=4)
+
+}
+
+//内联类
+//对 Int 做了包装，Int 必须定义在主构造器，且必须是 val 类型 和 public
+//可实现接口。且不能继续和被继承
+inline class BoxInt(val value: Int) {
+
+    //内联类属性：不应改包含状态。也就是只能定义方法或者函数
+
+    //重写自增运算符
+    operator fun inc(): BoxInt {
+        return BoxInt(value + 1)
+    }
+
+}
+```
+
+内联类目前还在公测。
+
+限制
+
+- 主构造器必须有且只有一个只读属性。因为要对其进行包装
+- 不能定义有 backing-field 的其他属性。不能有状态
+- 被包装的类型不是是泛型
+- 不能继续且被继承
+- 内联类不能被定义为其他类的内部类
+
+- 定义的方法在编译的时候会被替换为静态方法
+
+#### 数据类的 Json 化、
+
+
+
+依赖
+
+```kotlin
+kotlin("kapt") version ("1.3.50")
+```
+
+```kotlin
+implementation("com.squareup.moshi:moshi:1.8.0")
+implementation("com.squareup.moshi:moshi-kotlin:1.9.2")
+kapt("com.squareup.moshi:moshi-kotlin-codegen:1.8.0")
+```
+
+```kotlin
+fun main() {
+
+    //Gson
+    val gson = Gson()
+    println(gson.toJson(Person("Gson", 20)))
+    println(gson.fromJson("""{"name":"Gson"}""", Person::class.java))
+
+
+    println("----------------------")
+    //MoShi
+    val moshi = Moshi.Builder().build()
+    val jsonAdapter = moshi.adapter(Person::class.java)
+    println(jsonAdapter.toJson(Person("MoShi", 20)))
+    println(jsonAdapter.fromJson("""{"name":"Gson"}"""))
+    
+}
+
+@JsonClass(generateAdapter = true)
+data class Person(val name: String, val age: Int = 10)
+
+```
+
+```kotlin
+{"name":"Gson","age":20}
+Person(name=Gson, age=0)
+----------------------
+{"name":"MoShi","age":20}
+Person(name=Gson, age=10)
+```
+
+Bean 类中 age 的默认值是 10
+
+在 gson 解析的时候没有指定 age 则为 0
+
+而 moshi 解析的时候会按照构造方法中的默认值来进行解析。注意 moshi 用到了注解处理器 @JsonClass
+
+#### 递归整形案例
