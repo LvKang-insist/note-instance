@@ -384,7 +384,9 @@ fun a(sum: () -> Int) {
 }
 ```
 
-**案例：使用属性代理读写 Properties**
+#### **案例**
+
+**：使用属性代理读写 Properties**
 
 ```kotlin
 class PropertiesDelegate(private val path: String, private val defaultValue: String = "") {
@@ -502,8 +504,6 @@ fun main() {
 ```
 
 #### 内部类
-
- 
 
 ```kotlin
 fun main() {
@@ -858,3 +858,134 @@ Bean 类中 age 的默认值是 10
 而 moshi 解析的时候会按照构造方法中的默认值来进行解析。注意 moshi 用到了注解处理器 @JsonClass
 
 #### 递归整形案例
+
+```kotlin
+fun main() {
+
+    val l1 = inListOf(0, 1, 3, 4)
+    println(l1)
+    println(l1.joinToString('-'))
+    println(l1.sun())
+
+    val (x, y, z) = l1
+    println(x)
+    println(y)
+    println(z)
+}
+
+
+fun inListOf(vararg ints: Int): IntList {
+    return when (ints.size) {
+        0 -> IntList.Nil
+        else -> {
+            //递归调用,
+            //slice:切割，从第一个到最后一个（注意不是第 0 个）
+            //递归时，ints[0]永远是上一次的下一个
+            IntList.Cons(ints[0], inListOf(*(ints.slice(1 until ints.size).toIntArray())))
+        }
+    }
+}
+
+sealed class IntList {
+
+    object Nil : IntList() {
+        override fun toString(): String {
+            return "Nil"
+        }
+    }
+
+
+    class Cons(val head: Int, val tail: IntList) : IntList() {
+        override fun toString(): String {
+            return "$head,$tail"
+        }
+    }
+
+    fun joinToString(sep: Char = ','): String {
+        return when (this) {
+            Nil -> "Nil"
+            is Cons -> {
+                "${head}$sep${tail.joinToString(sep)}"
+            }
+        }
+    }
+
+
+    operator fun component1(): Int? {
+        return when (this) {
+            Nil -> null
+            is Cons -> head
+        }
+    }
+
+    operator fun component2(): Int? {
+        return when (this) {
+            Nil -> null
+            //下一个 Cons
+            is Cons -> tail
+                .component1()
+        }
+    }
+
+    operator fun component3(): Int? {
+        return when (this) {
+            Nil -> null
+            is Cons -> tail
+                .component2()
+        }
+    }
+}
+
+
+fun IntList.sun(): Int {
+    return when (this) {
+        IntList.Nil -> 0
+        is IntList.Cons -> {
+            head + tail.sun()
+        }
+    }
+}
+```
+
+- 类型进阶
+  - 类的构造器
+    - 主构造器：唯一的路径
+    - 副构造器：提供其他的构造路径
+    - init 快：可写多个，最后会合成一个执行
+  - 可见性
+    - public
+    - internal：模块内可见，类似一个 jar，aar
+    - protected：没有包内可见，只有子类看见
+    - private
+  - 类属性的延时初始化
+    - 可空类型
+    - lateinit
+    - lazy
+  - 代理 Delegate：
+    - 接口代理
+    - 属性代理：lazy，observable，vetoable 等
+  - 使用属性代理读写 Properties
+  - 单例 object
+    - 伴生对象
+    - 定义 java field 的 @JvmField
+    - 定义静态成员的 @javaStatic
+  - 内部类
+    - 默认静态
+    - 非静态用 inner 修饰
+    - 匿名内部类可以实现多个接口
+    - 本地类和本地函数
+  - 数据类
+    - component：主构造器中定义的属性
+    - 编译器生成的方法：equals，hashCode，copy，componentN
+    - 解构：定义了 componentN方法，即可通过解构获取到对应的值
+    - 插件：noArg(增加默认构造方法)，allOpen(去掉 final)
+  - 其他类
+    - 枚举类
+    - 密封类：子类只能定义在父类相同的文件中
+    - 内联类：类似于装箱拆箱
+  - 数据类的 json 序列化
+    - Gson，Moshi，Kotlinx.serialization
+    - 特性：默认参数，init 块
+  - 递归的整形列表的简单实现
+    - 递归用的非常好
+    - 可进行解构
