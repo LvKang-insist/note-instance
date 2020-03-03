@@ -19,7 +19,8 @@ suspend fun bar(a: Int): String {
 ​	通过反编译就可以很清楚的看到这一点，如下：
 
 ```kotlin
-    @Nullable
+    //https://github.com/work-helper/asm-bytecode-intellij 使用这个插件即可反编译
+	@Nullable
     public static final Object foo(@NotNull Continuation<? super Unit> $completion) {
         // 调用 bar 函数
         Object object = StudyOneKt.bar((int)1, $completion);
@@ -73,5 +74,78 @@ suspend fun getData(url: String): String = suspendCoroutine { continuation ->
 
 ​		通过 suspend 函数我们可以知道，**创建协程的关键就是 suspend 函数的最后一位参数 Continuation** 。这个参数就是用来在 suspend 函数执行完后进行回调的。suspend 挂起完成后，通过这个参数来进行回调。如上面的挂起函数
 
-​		创建协程通常需要一个 suspend 函数，也需要一个 API createCoroutine
+​		创建协程通常需要一个 suspend 函数，也需要一个 **API** createCoroutine
+
+​		看一下官方的 API 
+
+```kotlin
+public fun <R, T> (suspend R.() -> T).createCoroutine(
+    receiver: R,
+    completion:Continuation<T>
+): Continuation<Unit> //......
+
+public fun <T> (suspend () -> T).createCoroutine(
+    completion: Continuation<T>
+): Continuation<Unit> //.....
+```
+
+​		首先这两个函数都是扩展函数，一个是带 receiver（对象），一个是没有 receiver 的。他们都需要一个 Continuation 的参数，并且都返回了一个 Continuation 。
+
+​		一个协程创建之后一定会有两个 Continuation，一个是我们传进去的，这个是用来回调的。还有一个则是返回值 Continuation ，这个 Continuation 就是协程的本体，里面的 resume 全部执行完了之后就会调用我们传入得 Continuation。
+
+所以正确的创建方式就是
+
+```
+ suspend {
+
+    }.createCoroutine(object : Continuation<Unit> {
+        override val context: CoroutineContext
+            get() = TODO("not implemented")
+
+        override fun resumeWith(result: Result<Unit>) {
+
+        }
+    }).resume(Unit)
+```
+
+这里使用的是CreateCoroutine ，所以后面要使用 resume。也可以直接使用 startCoroutine。后面就不用 .resume 了。看一哈源码就知道是怎么回事了。
+
+------
+
+### 协程上下文
+
+```kotlin
+suspend {
+
+    }.startCoroutine(object : Continuation<Unit> {
+        override val context: CoroutineContext
+            get() = TODO("not implemented")
+
+        override fun resumeWith(result: Result<Unit>) {
+
+        }
+    })
+```
+
+上面的 CoroutineContext 则就是协程的上下文，其实就是数据集合
+
+- 协程执行过程中需要携带数据
+- 索引是 CoroutineContext.Key
+- 元素是 CoroutineContext.Elment
+
+### 上下文中的拦截器
+
+拦截器是 ContinuationInterceptor 是协程上下文中的元素，它会存在上下文中，只不过他做的事比较高级
+
+- 他可以篡改Continuation，可以对协程上下文所在协程的 Continuation 进行拦截。
+
+   
+
+  ```kotlin
+  public interface ContinuationInterceptor : CoroutineContext.Element {
+      public fun <T> interceptContinuation(continuation: Continuation<T>): Continuation<T>
+  }
+  ```
+
+  可以看到他是 拦截器是继承自 上下文的 Elment。这个拦截方法接收一个 Continuation，并且返回一个 Continuation，而且他们的泛型都是一样的，所以才可以进行篡改。类似于 OkHttp 的拦截器。
 
