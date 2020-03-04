@@ -149,3 +149,110 @@ suspend {
 
   可以看到他是 拦截器是继承自 上下文的 Elment。这个拦截方法接收一个 Continuation，并且返回一个 Continuation，而且他们的泛型都是一样的，所以才可以进行篡改。类似于 OkHttp 的拦截器。
 
+案例1：自定义挂起恢复。加深挂起恢复
+
+```kotlin
+interface Generator<T> {
+    operator fun iterator(): Iterator<T>
+}
+
+class GeneratorImpl<T>(private val block: suspend GeneratorScope<T>.(T) -> Unit, private val paramenter: T) :
+    Generator<T> {
+    override fun iterator(): Iterator<T> {
+        return GeneratorIterator(block, paramenter)
+    }
+}
+
+sealed class State {
+    class NotRead(val continuation: Continuation<Unit>) : State()
+    class Ready<T>(val continuation: Continuation<Unit>, val nextValue: T) : State()
+    object Done : State()
+}
+
+abstract class GeneratorScope<T> internal constructor() {
+
+    protected abstract val parameter: T
+    abstract suspend fun yield(value: T)
+}
+
+
+class GeneratorIterator<T>(
+    private val block: suspend GeneratorScope<T>.(T) -> Unit, override val parameter: T
+) : GeneratorScope<T>(), Iterator<T>, Continuation<Any?> {
+
+    override val context: CoroutineContext = EmptyCoroutineContext
+
+    private var state: State
+
+    init {
+        val coroutineBlock: suspend GeneratorScope<T>.() -> Unit = {
+            block(parameter)
+        }
+        val start = coroutineBlock.createCoroutine(this, this)
+        state = State.NotRead(start)
+    }
+
+
+    private fun resume() {
+        when (val currentState = state) {
+            is State.NotRead -> currentState.continuation.resume(Unit)
+        }
+    }
+
+    override fun hasNext(): Boolean {
+        resume()
+        return state != State.Done
+    }
+
+    override fun next(): T {
+        return when (val currentState = state) {
+            is State.NotRead -> {
+                resume()
+                return next()
+            }
+            is State.Ready<*> -> {
+                state = State.NotRead(currentState.continuation)
+                (currentState as State.Ready<T>).nextValue
+            }
+            State.Done -> throw IndexOutOfBoundsException("No value left")
+        }
+    }
+
+    override fun resumeWith(result: Result<Any?>) {
+        state = State.Done
+        result.getOrThrow()
+    }
+	//挂起，注意这里没有进行恢复
+    override suspend fun yield(value: T) = suspendCoroutine<Unit> { continuation ->
+        state = when (state) {
+            is State.NotRead -> State.Ready(continuation, value)
+            is State.Ready<*> -> throw IllegalArgumentException("Cannot yield a value while ready")
+            State.Done -> throw IllegalArgumentException("Cannot yield a value while done")
+        }
+    }
+}
+
+
+fun <T> generator(block: suspend GeneratorScope<T>.(T) -> Unit): (T) -> Generator<T> {
+    return { parament: T ->
+        GeneratorImpl(block, parament)
+    }
+}
+
+fun main() {
+
+    val nums = generator { start: Int ->
+        for (i in 0..5) {
+            yield(start + i)
+        }
+    }
+    val seq = nums(10)
+
+    for (i in seq) {
+        println(seq)
+    }
+}
+```
+
+​	这段代码理解了好长时间，总结一哈，挂起函数的 continuation 如果没有进行 resume。那么这个挂起函数将会一直挂起。直到 resume 后才会继续往下执行。
+
