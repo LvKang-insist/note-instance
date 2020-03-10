@@ -148,280 +148,43 @@ suspend {
   ```
 
   可以看到他是 拦截器是继承自 上下文的 Elment。这个拦截方法接收一个 Continuation，并且返回一个 Continuation，而且他们的泛型都是一样的，所以才可以进行篡改。类似于 OkHttp 的拦截器。
+  
+- 使用拦截器可以实现线程的调度
 
+  ```kotlin
+      // x ：协程的本体，内部的 resume 都执行完了之后才会回调我们传入的 Continuation
+      val x = suspend {
+  
+          getData("http://www.baidu.com")
+  
+          //传进去的 Continuation 是协程执行完后回调的 Continuation
+      }.createCoroutine(object : Continuation<String> {
+          override val context: CoroutineContext = Disp()
+          override fun resumeWith(result: Result<String>) {
+              println("result" + result.getOrThrow())
+          }
+      })
+      x.resume(Unit)
+  ```
 
+  ```kotlin
+  //自定义一个拦截器
+  class Disp() : ContinuationInterceptor {
+      override val key: CoroutineContext.Key<*> = ContinuationInterceptor
+  
+      override fun <T> interceptContinuation(continuation: Continuation<T>): Continuation<T> {
+          println("拦截")
+          return continuation
+      }
+  }
+  ```
 
-### suspend fun main
+  ​	注意 上面使用拦截器的位置，在 执行 x.resume 时，首先会执行拦截器的内容，拦截器接收一个 Continuation，并且返回一个 Continuation。这样我们就可以在这里进行一系列的操作，例如换线程等。
 
+  ​	那么 拦截器接收的 continuation 到底是谁的呢？
 
+  ​	其实就是 suspend{} ，它本身也是一个 continuation，这里拦截的就是 suspend{} 这个 continuation，拦截了之后，每次 resume 的时候就想到于先经过拦截器，再能 resume 我们的协程本体。
 
+![image-20200310115126399](10%EF%BC%8CContinuation.assets/image-20200310115126399.png)
 
-
-### 案例1：自定义挂起恢复。加深挂起恢复
-
-```kotlin
-interface Generator<T> {
-    operator fun iterator(): Iterator<T>
-}
-
-class GeneratorImpl<T>(private val block: suspend GeneratorScope<T>.(T) -> Unit, private val paramenter: T) :
-    Generator<T> {
-    override fun iterator(): Iterator<T> {
-        return GeneratorIterator(block, paramenter)
-    }
-}
-
-sealed class State {
-    class NotRead(val continuation: Continuation<Unit>) : State()
-    class Ready<T>(val continuation: Continuation<Unit>, val nextValue: T) : State()
-    object Done : State()
-}
-
-abstract class GeneratorScope<T> internal constructor() {
-
-    protected abstract val parameter: T
-    abstract suspend fun yield(value: T)
-}
-
-
-class GeneratorIterator<T>(
-    private val block: suspend GeneratorScope<T>.(T) -> Unit, override val parameter: T
-) : GeneratorScope<T>(), Iterator<T>, Continuation<Any?> {
-
-    override val context: CoroutineContext = EmptyCoroutineContext
-
-    private var state: State
-
-    init {
-        val coroutineBlock: suspend GeneratorScope<T>.() -> Unit = {
-            block(parameter)
-        }
-        val start = coroutineBlock.createCoroutine(this, this)
-        state = State.NotRead(start)
-    }
-
-
-    private fun resume() {
-        when (val currentState = state) {
-            is State.NotRead -> currentState.continuation.resume(Unit)
-        }
-    }
-
-    override fun hasNext(): Boolean {
-        resume()
-        return state != State.Done
-    }
-
-    override fun next(): T {
-        return when (val currentState = state) {
-            is State.NotRead -> {
-                resume()
-                return next()
-            }
-            is State.Ready<*> -> {
-                state = State.NotRead(currentState.continuation)
-                (currentState as State.Ready<T>).nextValue
-            }
-            State.Done -> throw IndexOutOfBoundsException("No value left")
-        }
-    }
-
-    override fun resumeWith(result: Result<Any?>) {
-        state = State.Done
-        result.getOrThrow()
-    }
-	//挂起，注意这里没有进行恢复
-    override suspend fun yield(value: T) = suspendCoroutine<Unit> { continuation ->
-        state = when (state) {
-            is State.NotRead -> State.Ready(continuation, value)
-            is State.Ready<*> -> throw IllegalArgumentException("Cannot yield a value while ready")
-            State.Done -> throw IllegalArgumentException("Cannot yield a value while done")
-        }
-    }
-}
-
-
-fun <T> generator(block: suspend GeneratorScope<T>.(T) -> Unit): (T) -> Generator<T> {
-    return { parament: T ->
-        GeneratorImpl(block, parament)
-    }
-}
-
-fun main() {
-
-    val nums = generator { start: Int ->
-        for (i in 0..5) {
-            yield(start + i)
-        }
-    }
-    val seq = nums(10)
-
-    for (i in seq) {
-        println(seq)
-    }
-}
-```
-
-​	这段代码理解了好长时间，总结一哈，挂起函数的 continuation 如果没有进行 resume。那么这个挂起函数将会一直挂起。直到 resume 后才会继续往下执行。
-
-### 案例2：非对称挂起恢复，加深挂起恢复的理解
-
-```kotlin
-sealed class Status {
-
-    class Created(val continuation: Continuation<Unit>) : Status()
-    class Yielded<P>(val continuation: Continuation<P>) : Status()
-    class Resumed<R>(val continuation: Continuation<R>) : Status()
-    object Dead : Status()
-
-}
-
-class Coroutine<P, R>(
-    override val context: CoroutineContext = EmptyCoroutineContext,
-    private val block: suspend Coroutine<P, R>.CoroutineBody.(P) -> R
-
-) : Continuation<R> {
-
-    //伴生对象，一个类中只能存在一个，类似于 java 的静态方法
-    companion object {
-        fun <P, R> create(
-            context: CoroutineContext = EmptyCoroutineContext,
-            block: suspend Coroutine<P, R>.CoroutineBody.(P) -> R
-        ): Coroutine<P, R> {
-            println(1)
-            return Coroutine(context, block)
-        }
-    }
-
-
-    inner class CoroutineBody {
-        var parameter: P? = null
-
-        suspend fun yield(value: R): P = suspendCoroutine { continuation ->
-            val previousStatus = status.getAndUpdate {
-                println(7)
-                when (it) {
-                    is Status.Created -> throw IllegalArgumentException("A了ready started")
-                    is Status.Yielded<*> -> throw IllegalArgumentException("A了ready yielded")
-                    is Status.Resumed<*> -> Status.Yielded(continuation)
-                    Status.Dead -> throw IllegalArgumentException("A了ready dead")
-                }
-            }
-            println(8)
-            (previousStatus as? Status.Resumed<R>)?.continuation?.resume(value)
-        }
-    }
-
-    private val body = CoroutineBody()
-
-    private val status: AtomicReference<Status>
-
-    val isActive: Boolean
-        get() = status.get() != Status.Dead
-
-    init {
-        println(2)
-        val coroutineBlock: suspend CoroutineBody.() -> R = {
-            block(parameter!!)
-        }
-        val start = coroutineBlock.createCoroutine(body, this)
-        status = AtomicReference(Status.Created(start))
-    }
-
-    override fun resumeWith(result: Result<R>) {
-        println("哈哈哈哈哈")
-        val previousStatus = status.getAndUpdate {
-            when (it) {
-                is Status.Created -> throw IllegalArgumentException("Never started")
-                is Status.Yielded<*> -> throw IllegalArgumentException("A了ready yielded")
-                is Status.Resumed<*> -> {
-                    Status.Dead
-                }
-                Status.Dead -> throw IllegalArgumentException("Already dead")
-            }
-        }
-        (previousStatus as Status.Resumed<R>).continuation.resumeWith(result)
-    }
-
-    suspend fun resume(value: P): R = suspendCoroutine { coninuation ->
-        //getAndUpdate 传入的函数将会赋值给 status
-        val preiousStatus = status.getAndUpdate {
-            println(4)
-            when (it) {
-                is Status.Created -> {
-                    body.parameter = value
-                    Status.Resumed(coninuation)
-                }
-                is Status.Yielded<*> -> {
-                    Status.Resumed(coninuation)
-                }
-                is Status.Resumed<*> -> throw IllegalArgumentException("A了ready yielded")
-                Status.Dead -> throw IllegalArgumentException("A了ready yielded")
-            }
-        }
-        println(5)
-        when (preiousStatus) {
-            is Status.Created -> {
-                println("---------")
-                preiousStatus.continuation.resume(Unit)
-            }
-            is Status.Yielded<*> -> {
-                println("+++++++++++++++")
-                (preiousStatus as Status.Yielded<P>).continuation.resume(value)
-            }
-        }
-    }
-}
-//自定义拦截器
-class Dispatcher : ContinuationInterceptor {
-    override val key = ContinuationInterceptor
-
-    override fun <T> interceptContinuation(continuation: Continuation<T>): Continuation<T> {
-        return DispcherContinuation(continuation)
-    }
-
-}
-
-//对象 continuation 代替 DispcherContinuation 实现 Continuation 接口
-class DispcherContinuation<T>(val continuation: Continuation<T>) : Continuation<T> by continuation {
-
-    private val executor = Executors.newSingleThreadExecutor()
-
-    override fun resumeWith(result: Result<T>) {
-        executor.submit {
-            continuation.resumeWith(result)
-        }
-    }
-
-}
-
-suspend fun main() {
-
-    val prodducer = Coroutine.create<Unit, Int>(Dispatcher()) {
-        println(6)
-        for (i in 0..3) {
-            println(Thread.currentThread().name + " send $i")
-            yield(i)
-        }
-        200
-    }
-
-    val consumer = Coroutine.create<Int, Unit>(Dispatcher()) { param: Int ->
-        for (i in 0..3) {
-            val value = yield(Unit)
-            println(Thread.currentThread().name + " receive $value")
-        }
-    }
-
-    while (prodducer.isActive && consumer.isActive) {
-        println(3)
-        val result = prodducer.resume(Unit)
-        println("/////////////////////////////////////////////")
-        consumer.resume(result)
-    }
-
-}
-```
-
-理解了一哈，感觉就是不断地挂起和恢复。执行到 resume 后，将 resume 的 continuation 保存起来，将别的 suspend 恢复，然后又调用 yeild ，在yeild 中会挂起，并将 resume 函数恢复。while 循环里面继续往下执行。感觉就是不断地挂起和恢复。
-
+协程的本体就是 SuspendLambda，就相当于是 suspend{}.startCoroutine(.....)，拦截器会在 suspendLambda 外面进行包装，包装完成之后会得到一个新的 continuation。每次 resume 的时候都会调用拦截器。最外面的 SafeContinuation 只有在挂起点出现的时候他才会出现，用来保证挂起能够正常的执行逻辑。
