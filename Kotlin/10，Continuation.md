@@ -1,3 +1,5 @@
+### suspend + Continuation
+
 在了解 Continuation 之前，首先要知道 suspend 函数为什么只能被 suspend 函数或者协程调用？
 
 ```kotlin
@@ -188,3 +190,8 @@ suspend {
 ![image-20200310115126399](10%EF%BC%8CContinuation.assets/image-20200310115126399.png)
 
 协程的本体就是 SuspendLambda，就相当于是 suspend{}.startCoroutine(.....)，拦截器会在 suspendLambda 外面进行包装，包装完成之后会得到一个新的 continuation。每次 resume 的时候都会调用拦截器。最外面的 SafeContinuation 只有在挂起点出现的时候他才会出现，用来保证挂起能够正常的执行逻辑。
+
+### 调度器
+
+- 拦截器：调度器本身就是拦截器，在拦截器中进行调度。拦截器就是协程的上下文
+- Default：默认的线程池，在拦截器中使用线程池进行调度
