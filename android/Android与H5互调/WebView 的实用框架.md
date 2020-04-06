@@ -81,7 +81,7 @@ public abstract class WebDelegate extends LatteDelegate implements IWebViewIniti
             //实例化接口
             final IWebViewInitializer initializer = setInitializer();
             if (initializer != null) {
-                //软引用，避免内存泄露，创建WebView 的对象
+                //弱引用，避免内存泄露，创建WebView 的对象
                 final WeakReference<WebView> webViewWeakReference =
                         new WeakReference<>(new WebView(getContext()), WEB_VIEW_QUEUE);
                 mWebView = webViewWeakReference.get();
