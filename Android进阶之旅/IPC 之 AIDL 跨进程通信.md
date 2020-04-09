@@ -1,6 +1,6 @@
 ### IPC 简介
 
-IPC 的含义为进程间通信或者跨进程通信，是指两个进程之间数据交换的过程
+IPC 的含义为进程间通信或者跨进程通信，是**指两个进程之间数据交换的过程**
 	多进程的情况分为两种:
 	1，一个应用因为某些原因自身需要采用多进程模式来实现
 	2，当前应用需要向其他应用获取数据
@@ -8,7 +8,7 @@ IPC 的含义为进程间通信或者跨进程通信，是指两个进程之间�
 Android 中的多进程模式
 	正常情况下，在Android中多进程是指一个应用中存在多个进程的情况
 	在android 中使用多进程的方法：
-	1，给四大组件在AndroidMenifest中指定android:process属性（我们无法给一个线程或一个实体类指定其运行时所在的进程）
+	1，给四大组件在AndroidMenifest中指定**android:process**属性（我们无法给一个线程或一个实体类指定其运行时所在的进程）
 	2，非常规方法：通过JNI在native层去fork一个新的进程
 	
 
@@ -26,7 +26,7 @@ Android系统会为每一个应用分配一个 UID ，具有相同UID 的应用�
 
 android 系统会为每个进程分配一个独立的虚拟机，不同地虚拟机在内存分配上有不同的地址空间，所以早期不同的虚拟机中访问同一个类的对象会产生多个副本。
 
-使用多进程容易造成一下几个问题
+**使用多进程容易造成一下几个问题**
 
 1，静态成员和单例完全失效
 
@@ -36,7 +36,7 @@ android 系统会为每个进程分配一个独立的虚拟机，不同地虚拟
 
 4，Application 会多次创建
 
-![1577696338343](../android/%E6%9D%82/IPC.assets/1577696338343.png)
+![1577696338343](IPC.assets/1577696338343.png)
 
 ​	如上面图片，启动多个进程后，Application 会多次执行，而且 as 上面显示有三个进程，通过试验，两个进程之间的静态数据不会被干扰，相当于把原来进程中的数据重新拷贝了一份。修改当前进程，别的进程数据也不会改变，尽管他是静态属性。
 
@@ -130,7 +130,7 @@ Binder 架构
 
 ​	首先绑定服务，将服务端的返回的 Binder 转成 AIDL 接口所属的类型，接着就可以调用 AIDL 中的方法了
 
-注意事项
+**注意事项**
 
 - AIDL 是定义 IPC 过程中接口的一种描述语言
 - AIDL 文件在编译过程中生成接口的实现类，用于 IPC 通信
@@ -145,7 +145,7 @@ Binder 架构
 - AIDL 如何实现 IPC
 - in ，out，inout 关键字的作用
 - oneway 关键字的作用
-- AIDL 如果实现 callback
+- AIDL 如何实现 callback
 
 项目场景
 
@@ -244,7 +244,6 @@ class RemoteService : Service() {
     private var isConnected: Boolean = false
     
     /**
-     * Stub 是实现类中的抽象类
      * 这三个方法就是 aidl 文件中的三个方法，在这里进行实现
      */
     val connectionService =
@@ -254,10 +253,7 @@ class RemoteService : Service() {
                 //模拟连接耗时
                 Thread.sleep(5000)
                 this@RemoteService.isConnected = true
-                Log.e(
-                    "connect",
-                    "${android.os.Process.myPid()}  --- ${Thread.currentThread().name}"
-                )
+                Log.e(  "connect","${android.os.Process.myPid()}   ${Thread.currentThread().name}")
                 GlobalScope.launch(Dispatchers.Main) {
                     Toast.makeText(this@RemoteService, "connect", Toast.LENGTH_LONG).show()
                 }
@@ -266,10 +262,7 @@ class RemoteService : Service() {
             //当主进程调用 disconnect 时，这里个 disconnect 就会执行
             override fun disconnect() {
                 this@RemoteService.isConnected = false
-                Log.e(
-                    "connect",
-                    "${android.os.Process.myPid()}  --- ${Thread.currentThread().name}"
-                )
+                Log.e("connect","${android.os.Process.myPid()}  --- ${Thread.currentThread().name}")
                 //切换到主线程
                 GlobalScope.launch(Dispatchers.Main) {
                     Toast.makeText(this@RemoteService, "disconnect", Toast.LENGTH_LONG).show()
@@ -347,7 +340,7 @@ class MainActivity : AppCompatActivity() {
 
 ​		对比进程 id，可以看出是执行在 子进程中，并且还是执行在子线程中，正因为如此，所以上面在 Toast 的时候转到了主线程
 
-​		不知道你有没有注意到，当你点击连接的按钮后，按钮的状态在 5秒后才会恢复，如果没注意到赶紧去看一下。这是因为 connect 方法时阻塞的，只有等到子进程将这个方法执行完成后 主进程中的主线程才会继续往下执行。
+​		不知道你有没有注意到，当你点击连接的按钮后，按钮的状态在 5秒后才会恢复，**如果没注意到赶紧去看一下**。这是因为 connect 方法时阻塞的，只有等到子进程将这个方法执行完成后 主进程中的主线程才会继续往下执行。
 
 ​		那这种情况有没有什么办法解决呢？如下
 
@@ -726,8 +719,6 @@ class MainActivity : AppCompatActivity() {
   ```
 
   使用系统提供的 RemoteCallbackList 即可。至于为什么可以，去看一下源码就明白了
-
-
 
 ### 关键字的作用
 

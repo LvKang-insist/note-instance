@@ -1,6 +1,6 @@
 在上篇文章中我们使用 AIDL 完成了进程之间的通信，下面我们分析一下 AIDL 文件的实现类
 
-首页从 IConnectionService 开始，aidl 文件如下：
+aidl 文件如下：
 
 ```java
 /**
@@ -234,7 +234,7 @@ public interface IConnectionService extends android.os.IInterface {
 
 ​	可以看到他内部有 三个方法，分别对应着 AIDL 中定义的三个方法。还有一个默认的实现类，实现了这三个方法。这个不是重点，重点是 抽象类Stub
 
-​	Stub 就是一个 Binder 类，当客户端和服务端位于同一个进程时，方法调用不会走跨进程的 transact 方法，当两者唯一不同进程时，方法调用需要走 transact 过程，这个逻辑有 Proxy来完成，在 asInterface 中就会判断是否为同一个进程，如果不是则就会返回 内部的代理类 Proxy
+​	Stub 就是一个 Binder 类，实现了IConnectionService，当客户端和服务端位于同一个进程时，方法调用不会走跨进程的 transact 方法，当两者唯一不同进程时，方法调用需要走 transact 过程，这个逻辑有 Proxy来完成，在 asInterface 中就会判断是否为同一个进程，如果不是则就会返回 内部的代理类 Proxy
 
 ​	下面介绍一下这两个类的方法和含义
 
