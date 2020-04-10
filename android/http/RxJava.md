@@ -1,4 +1,4 @@
-​	 RxJava  的优点
+RxJava  的优点
 
 - RxJava 能提高工作效率
 - 简洁
@@ -67,7 +67,7 @@ Schedulers(调度器)
             });
 ```
 
-​	上面的 emitter 是一个发射器，他就是用来发送事件的，他发送事件后 观察者则会接收到他发送的事件，他可以发送三种类型的事件，过调用emitter的onNext(T value)、onError(Throwable error)和onComplete()就可以分别发出next事件、error事件和complete事件。
+​	上面的 emitter 是一个发射器，他就是用来发送事件的，他发送事件后 观察者则会接收到他发送的事件，他可以发送三种类型的事件，通过调用emitter的onNext(T value)、onError(Throwable error)和onComplete()就可以分别发出next事件、error事件和complete事件。
 
 创建 观察者模式
 
