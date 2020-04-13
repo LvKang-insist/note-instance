@@ -83,5 +83,15 @@ class MyLinearLayout : LinearLayoutCompat {
 
 ​	详见同级文件夹中 Scroller.md
 
+### 其他的滑动方式
 
+- scrollTo / scrollBy
+- 使用动画
+- 改变布局参数：例如改变 MarginLayoutParams
+
+### 弹性滑动
+
+- 使用 Scroller
+- 通过属性动画
+- 使用延时策略
 

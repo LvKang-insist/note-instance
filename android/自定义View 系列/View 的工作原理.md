@@ -1,6 +1,55 @@
 
 
-View 的主要工作流程 是指 measure，layout，draw 这三大过程，即布局，测量，和绘制。measure 确定 View 的测量宽高，layout 确定 View 的最终 宽 / 高 和四个顶点的位置，二draw 则将View 绘制到屏幕上。
+### VeiwRoot 和 DecorView
+
+​		ViewRoot 对应于 ViewRootImpl 类，他是连接 WindowManager 和 DecorView 的纽带，View 的三大流程都是通过 ViewRoot 来完成的。
+
+​		在 ActivityThread 中，当 Activity 被创建完毕后，会将 DecorView 添加到 Window 中，同时会创建 ViewRootImpl 对象，并将 ViewRootImpl 和 DecorView 建立关联。
+
+​		DecorView ：DecorView 是整个 Window 界面最顶层的 View
+
+​		View 的绘制流程是从 ViewRoot 的 performTraversals 方法开始的，他经过 measure ，layout 和 draw三个过程后最终将一个 View 绘制出来。其中 measure 测量宽高，layout 用来确定 View 在父容器的位置， draw 赋值将 View 绘制到屏幕上。
+
+​		![image-20200413142156876](1%EF%BC%8C%E7%AE%80%E5%8D%95%E7%9A%84%E8%87%AA%E5%AE%9A%E4%B9%89View.assets/image-20200413142156876.png)
+
+
+
+### MeasureSpec
+
+​		MeasureSpec 代表一个 32 位的 int 值，高 2为代表 SpecMode，低 30 为代表 SpecSize。
+
+​		SpecMode ：测量模式
+
+​		SpecSize：值在某种测量模式下的规格大小
+
+​		MeasureSpec 将 SpecMode 和 SpecSize 打包成一个 int 值来避免过多的对象内存分配，方法方便操作，其提供了打包 和 解包的方法。这两个都是 int 值，这两个值 就可以打包为一个 MeasureSpec。
+
+​		SpecMode 有三大类，每一类都代表特殊含义，如下所示：
+
+- UNSPECIFIED 
+
+  父容器不对 View 有任何限制，要多大给多大，一般用于系统内部，表示一种测量状态
+
+- EXACTLY 
+
+  父容器检测出 View 所需要的精确值大小，这个时候 View 的最终大小就是 SpecSize 所指定的值，它对应与LayoutParams 中的 match_parent 和具体的数值这两种模式。 
+
+- AT_MOST 
+
+  父容器 指定了一个可用的大小，接 SpecSize，View 的大小不能大于这个值，具体是什么值需要看 View 的具体实现，它对应于 LayoutParams 中的 wrap_content。
+
+#### MeasureSpec 和 LayoutParams 对应关系
+
+​		系统内部使用的是 MeasureSpec 来进程测量，一般情况下我们使用的是 LayoutParams。在 View 测量的时候，系统会将 LayoutParams 在父容器的约束下转换成对应的 MeasureSpec，然后来确定 View 的宽高。MeasureSpec 并不是唯一由 LayoutParams 决定的，LayoutParams 需啊哟和父容器一起才能决定 View 的 MeasureSpec，进而决定 View 的宽高。
+
+​		对于顶级View(即 DecorView) 和普通 View 来说，MeasureSpec 的装过程略有不同，对于 DecorView，器 MeasureSpec 由窗口尺寸和自身的 LayoutParams 来共同决定。对用普通 View，则是由 父容器的 MeasureSpec 和自身的 LayoutParams 来决定。MeasureSpec 一旦确定后， onMeasure 中就可以确定 View 的测试宽/高。
+
+- LayoutParams.MATCH_RARENT：精确模式，大小是窗口大小
+- LayoutParams.WRAP_CONTENT：最大模式，大小不确定，但是不能超过窗口的大小
+
+### View 的工作流程
+
+​	View 的主要工作流程 是指 measure，layout，draw 这三大过程，即布局，测量，和绘制。measure 确定 View 的测量宽高，layout 确定 View 的最终 宽 / 高 和四个顶点的位置，二draw 则将View 绘制到屏幕上。
 
 measure 过程：
 
@@ -63,12 +112,8 @@ public int getMinimumWidth() {
 
 可以看出 getMinimumWidth 返回的就就是Drawable 的原始高度，前提是有原始高度，否则就返回 0 。
 
-
-
 这里总结一下 getSuggestedMinimumWidth 的逻辑：
 
 ​	如果View 没有设置 背景，则返回 android:minWidth 这个属性所指定的大小，这个值可以为0。如果View设置了背景，  则返回 mMinWidth 和 mBackground.getMinimumWidth() 这两者的最大值。getSuggestedMinimumWidth() 和 getSuggestedMinimumHeight() 的返回值 就是 View 在 UNSPECIFIEED 情况下的测量的 宽 和 高。
-
-
 
 从 getDefaultSize 方法的实现来看，View 的宽 / 高 有specSize 来确定，所以我们可以得出如下结论：直接继承 View 的自定义 控件 需要重写 onMeasure 方法并设置 wrap_content 时 的自身大小，否则在布局中 使用 wrap_content 就相当于 使用 match_parent 。为什么呢？。从上述代码我们知道。如果 View 在布局中使用 wrap_content ，那么他的 specMode 是AT_MOST 模式，在这种 模式下 ，他的宽高 等于 等于 specSize。
