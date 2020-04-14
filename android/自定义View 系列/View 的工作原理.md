@@ -51,7 +51,7 @@
 
 ​	View 的主要工作流程 是指 measure，layout，draw 这三大过程，即布局，测量，和绘制。measure 确定 View 的测量宽高，layout 确定 View 的最终 宽 / 高 和四个顶点的位置，二draw 则将View 绘制到屏幕上。
 
-measure 过程：
+### measure 过程：
 
 ​	如果是一个原始的View ，那么通过 measure 方法就完成了 测量的过程，如果是一个 ViewGroup ，除了 完成自己的测量意外，还会去遍历调用所有的子元素的 measure 方法，各个子元素 再去递归执行这个过程。下面针对两种情况分别进行讨论：
 
@@ -117,3 +117,57 @@ public int getMinimumWidth() {
 ​	如果View 没有设置 背景，则返回 android:minWidth 这个属性所指定的大小，这个值可以为0。如果View设置了背景，  则返回 mMinWidth 和 mBackground.getMinimumWidth() 这两者的最大值。getSuggestedMinimumWidth() 和 getSuggestedMinimumHeight() 的返回值 就是 View 在 UNSPECIFIEED 情况下的测量的 宽 和 高。
 
 从 getDefaultSize 方法的实现来看，View 的宽 / 高 有specSize 来确定，所以我们可以得出如下结论：直接继承 View 的自定义 控件 需要重写 onMeasure 方法并设置 wrap_content 时 的自身大小，否则在布局中 使用 wrap_content 就相当于 使用 match_parent 。为什么呢？。从上述代码我们知道。如果 View 在布局中使用 wrap_content ，那么他的 specMode 是AT_MOST 模式，在这种 模式下 ，他的宽高 等于 等于 specSize。
+
+### layout 过程：
+
+Layout 的作用是 ViweGroup 用来确定子元素的位置，当 ViewGroup 的位置确定后，它在 onLayout 中就会变了所有的子元素并调用其 layout 方法，在 layout 方法中 onLayout 又会被调用。layout 确定 View 本身的位置，而 onLayout 则会确定所有子元素的位置。
+
+```java
+int oldL = mLeft;
+int oldT = mTop;
+int oldB = mBottom;
+int oldR = mRight;
+
+boolean changed = isLayoutModeOptical(mParent) ?
+        setOpticalFrame(l, t, r, b) : setFrame(l, t, r, b);
+
+if (changed || (mPrivateFlags & PFLAG_LAYOUT_REQUIRED) == PFLAG_LAYOUT_REQUIRED) {
+    onLayout(changed, l, t, r, b);
+```
+
+在 View 的 layout 方法中，首先会获取四个顶点的位置，顶点的值确定后，View 在父容器的位置也就确定了。接着就会调用 onLayout 方法，这个方法父容器确定子元素的位置。
+
+ViewGroup onLayout ：
+
+```java
+override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+    if (changed && childCount > 0) {
+        val childCount = childCount
+        for (i in 0 until childCount) {
+            val childView = getChildAt(i)
+            //给每一个子控件在水平方向上布局
+            childView.layout(
+                i * childView.measuredWidth, 0,
+                (i + 1) * childView.measuredWidth, childView.measuredHeight
+            )
+        }
+        //获取左右边界
+        leftBorder = getChildAt(0).left
+        rightBorder = getChildAt(childCount - 1).right
+    }
+}
+```
+
+在 ViewGroup 的onLayout 中，获取到子View 的数量，然后调用 View 的 layout 方法，进行布局。
+
+### draw过程
+
+作用是将 View 绘制到屏幕上面，View 的绘制过程遵循如下几步：
+
+1，绘制背景
+
+2，绘制自己
+
+3，绘制 children
+
+4，绘制装饰
