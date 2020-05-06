@@ -772,5 +772,5 @@ public class CustomPatchListener extends DefaultPatchListener {
 
 ​		关于上面 tinker 的用法我写了一个[demo](https://github.com/LvKang-insist/Tinker)，demo中也集成了walle和友盟统计。bugly就不传了，官方文档非常详细。但是注意文档上的依赖版本不是最新的。这个亏我已经吃了。。。
 
-​		其实学完以后才发现这种用法已经比较老了。所以我还是觉定用 bugly。他内部也是用的 tinker ，使用起来比较简单，当前一定要认真看文档，比如说我。。。吃了不少亏
+​		其实学完以后才发现这种用法已经比较老了。所以我还是觉定用 bugly。他内部也是用的 tinker ，使用起来比较简单，但是一定要认真看文档，比如说我。。。吃了不少亏
 
