@@ -480,3 +480,331 @@ protected AppCompatImageView createImageView(Context context, AttributeSet attrs
 
 这里比较重要的是 View 的创建首先会走 mFactory2，然后才会走 mFactory，只要不会 null，就会执行 Factory 的 onCreateView 方法。否则最后就会走 系统的 createView 方法。
 
+---
+
+### LayoutInflater
+
+​		主要用来实例化我我们的 layout 布局
+
+​		使用的方式		
+
+```java
+View.inflate(this,R.layout.activity_main,null) //1
+LayoutInflater.from(this).inflate(R.layout.activity_main,null) //2
+LayoutInflater.from(this).inflate(R.layout.activity_main,null,false) //3
+```
+
+```java
+//1
+public static View inflate(Context context, @LayoutRes int resource, ViewGroup root) {
+    LayoutInflater factory = LayoutInflater.from(context);
+    return factory.inflate(resource, root);
+}
+//2
+public View inflate(@LayoutRes int resource, @Nullable ViewGroup root) {
+    return inflate(resource, root, root != null);
+}
+//3
+public View inflate(@LayoutRes int resource, @Nullable ViewGroup root, boolean attachToRoot) {
+	//......
+}
+```
+
+​	从源码中可以看到，第一种调用的是第二种，第二种调用的是第三种，根据有没有传入根布局来传入第三个参数。所以我们只需要看第三个方法就 ok
+
+**看一下 LayoutInflater.from()**
+
+```java
+public static LayoutInflater from(Context context) {
+    LayoutInflater LayoutInflater =
+            (LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+    return LayoutInflater;
+}
+
+############################# ContextImpl ############
+@Override
+public Object getSystemService(String name) {
+    return SystemServiceRegistry.getSystemService(this, name);
+}
+
+//一个静态的 Map
+private static final Map<String, ServiceFetcher<?>> SYSTEM_SERVICE_FETCHERS =
+            new ArrayMap<String, ServiceFetcher<?>>();
+public static Object getSystemService(ContextImpl ctx, String name) {
+    ServiceFetcher<?> fetcher = SYSTEM_SERVICE_FETCHERS.get(name);
+    return fetcher != null ? fetcher.getService(ctx) : null;
+}
+```
+
+可以看到这里拿到的是一个系统的服务 
+
+接着往下看就可以看到这个服务是从一个 静态的 Map 中获取的。那么这个 Map 是怎么初始化的呢？
+
+ContextImpl 中有一个静态代码块，专门用来注册各种服务，LAYOUT_INFLATER_SERVICE 也是其中的一个。
+
+**由此我们可以得知 LayoutInflater.from(this) 是一个系统服务，并且他是一个单例。**
+
+**接着看一下是怎样实例化 View 的**
+
+```java
+public View inflate(@LayoutRes int resource, @Nullable ViewGroup root, boolean attachToRoot) {
+    //获取资源文件
+    final Resources res = getContext().getResources();
+   
+    //XmlResourceParser  的解析器
+    XmlResourceParser parser = res.getLayout(resource);
+    try {
+        return inflate(parser, root, attachToRoot);
+    } finally {
+        parser.close();
+    }
+}
+```
+
+```java
+public View inflate(XmlPullParser parser, @Nullable ViewGroup root, boolean attachToRoot) {
+    synchronized (mConstructorArgs) {
+        Trace.traceBegin(Trace.TRACE_TAG_VIEW, "inflate");
+
+    	//...........
+        //保存传进来的 Viwe
+        View result = root;
+
+        try {
+            advanceToRootNode(parser);
+            final String name = parser.getName();
+		   //如果是 merge 标签 就调用 rInflate，否则执行 else 
+            if (TAG_MERGE.equals(name)) {
+                if (root == null || !attachToRoot) {
+                    throw new InflateException("<merge /> can be used only with a valid "
+                            + "ViewGroup root and attachToRoot=true");
+                }
+			   //这里直接加载界面，忽略 marge 标记，直接传入 root 进 rInflate 进行加载子 View
+                rInflate(parser, root, inflaterContext, attrs, false);
+            } else {
+                // Temp是在xml中找到的根视图，创建 View
+                final View temp = createViewFromTag(root, name, inflaterContext, attrs);
+
+                ViewGroup.LayoutParams params = null;
+			   // root 如果不为空，则设置 layoutParams	
+                if (root != null) {
+                    if (DEBUG) {
+                        System.out.println("Creating params from root: " +
+                                root);
+                    }
+                    // Create layout params that match root, if supplied
+                    params = root.generateLayoutParams(attrs);
+                    if (!attachToRoot) {
+                        // Set the layout params for temp if we are not
+                        // attaching. (If we are, we use addView, below)
+                        temp.setLayoutParams(params);
+                    }
+                }
+                //先获取到了temp,再把temp当做root传进去rInflateChildren，进行加载temp后面的子view
+                rInflateChildren(parser, temp, attrs, true);
+
+              	//把 View 添加到 root 布局并设置布局参数
+                if (root != null && attachToRoot) {
+                    root.addView(temp, params);
+                }
+			//...
+            }
+
+        } catch (XmlPullParserException e) {
+       		//...
+        }
+
+        return result;
+    }
+}
+//创建 View
+View createViewFromTag(View parent, String name, Context context, AttributeSet attrs,
+            boolean ignoreThemeAttr) {
+    	
+		//......
+        try {
+            //创建 View
+            View view = tryCreateView(parent, name, context, attrs);
+		   //如果没有创建成果
+            if (view == null) {
+                final Object lastContext = mConstructorArgs[0];
+                mConstructorArgs[0] = context;
+                try {
+                    //判断 name 是否为 全类名，最终创建反射创建 View
+                    //如果不是全类别，就需要进行拼接
+                    if (-1 == name.indexOf('.')) {
+                        view = onCreateView(context, parent, name, attrs);
+                    } else {
+                        view = createView(context, name, null, attrs);
+                    }
+                } finally {
+                    mConstructorArgs[0] = lastContext;
+                }
+            }
+
+            return view;
+        } catch (InflateException e) {
+       		//....
+        }
+    }
+
+ public final View tryCreateView(@Nullable View parent, @NonNull String name,
+        @NonNull Context context,
+        @NonNull AttributeSet attrs) {
+      
+        View view;
+     	//mFactory2 如果不为 空，则直接调用 mFactory2 的 onCreateView
+     	// AppCompatActivity 中就设置了 mFactory2
+        if (mFactory2 != null) {
+            view = mFactory2.onCreateView(parent, name, context, attrs);
+        } else if (mFactory != null) {
+            view = mFactory.onCreateView(name, context, attrs);
+        } else {
+            view = null;
+        }
+        if (view == null && mPrivateFactory != null) {
+            view = mPrivateFactory.onCreateView(parent, name, context, attrs);
+        }
+        return view;
+    }
+```
+
+在 AppCompatDelegateImp 中 为什么能走自己的 onCreateView 方法，就是因为他设置了 mFactory ，所以才可以拦截 View 的创建
+
+如果说 mFactory 都等于 空，最后会自己创建 view，如果不为空，则 View 的创建会被拦截，去执行对应 mFactory 中的方法
+
+接着我们看下没有使用 mFactory 的 View 创建
+
+```java
+//默认的 View 创建流程
+public View onCreateView(@NonNull Context viewContext, @Nullable View parent,
+        @NonNull String name, @Nullable AttributeSet attrs)
+        throws ClassNotFoundException {
+    return onCreateView(parent, name, attrs);
+}
+protected View onCreateView(String name, AttributeSet attrs)
+        throws ClassNotFoundException {
+    //添加全类名
+    return createView(name, "android.view.", attrs);
+}
+
+public final View createView(@NonNull Context viewContext, @NonNull String name,
+            @Nullable String prefix, @Nullable AttributeSet attrs)
+            throws ClassNotFoundException, InflateException {
+      
+    	//从缓存中获取
+        Constructor<? extends View> constructor = sConstructorMap.get(name);
+        if (constructor != null && !verifyClassLoader(constructor)) {
+            constructor = null;
+            sConstructorMap.remove(name);
+        }
+        Class<? extends View> clazz = null;
+
+        try {
+            Trace.traceBegin(Trace.TRACE_TAG_VIEW, name);
+		   //如果缓存总没有，则反射进行创建，并加入缓存	
+            if (constructor == null) {
+                // Class not found in the cache, see if it's real, and try to add it
+                clazz = Class.forName(prefix != null ? (prefix + name) : name, false,
+                        mContext.getClassLoader()).asSubclass(View.class);
+			   //拿到构造函数mConstructorSignature = new Class[] {Context.class, AttributeSet.class};
+            	//拿到为两个参数的构造函数
+                constructor = clazz.getConstructor(mConstructorSignature);
+                constructor.setAccessible(true);
+                sConstructorMap.put(name, constructor);
+            } else {
+               //.......
+            }
+
+            Object lastContext = mConstructorArgs[0];
+            mConstructorArgs[0] = viewContext;
+            Object[] args = mConstructorArgs;
+            args[1] = attrs;
+
+            try {
+                //反射创建 View
+                final View view = constructor.newInstance(args);
+                if (view instanceof ViewStub) {
+                    // Use the same context when inflating ViewStub later.
+                    final ViewStub viewStub = (ViewStub) view;
+                    viewStub.setLayoutInflater(cloneInContext((Context) args[0]));
+                }
+                return view;
+            } finally {
+                mConstructorArgs[0] = lastContext;
+            }
+        }catch (Exception e) {
+           //......
+        } finally {
+            Trace.traceEnd(Trace.TRACE_TAG_VIEW);
+        }
+    }
+```
+
+大致看完了源码，需要知道一些几个问题
+
+1，如果获取 LayoutInflater 
+
+​	 通过获取系统的服务，并且是一个单例
+
+2，如果使用 LayoutInflater
+
+​	  三种使用方式，在开头说过了
+
+3，布局是如果被实例化的
+
+​	 最终布局是通过反射进行实例化的
+
+4，mFactory 的作用
+
+​	  拦截 View 的创建，使 View 的创建走自定义的流程，如 AppCompatView 的 setContentView 中。
+
+5，xml 和 直接 new 出来的有啥区别
+
+布局文件中的VIew 创建调用的是两个参数的构造，而直接 new 的是通过一个参数的构造。并且 xml 中定义的布局最终是通过反射进行创建的，所以尽量不要多重嵌套
+
+### 拦截 View 的创建
+
+​	按照上面的分析可以知道，如果要拦截 View 的创建，就需要给 LayoutInflater 设置 Factory 。
+
+```java
+ override fun onCreate(savedInstanceState: Bundle?) {
+        intercept()
+        super.onCreate(savedInstanceState)
+    }
+
+    private fun intercept() {
+        val layoutInflater = LayoutInflater.from(this)
+        LayoutInflaterCompat.setFactory2(layoutInflater, object : LayoutInflater.Factory2 {
+            override fun onCreateView(name: String, context: Context, attrs: AttributeSet): View? {
+                return onCreateView(null, name, context, attrs)
+            }
+
+            override fun onCreateView(
+                parent: View?, name: String, context: Context, attrs: AttributeSet
+            ): View? {
+                Log.e("BaseSkinActivity", "拦截到 View 的创建")
+                //拦截 View 的创建
+                return if (name == "Button") {
+                    val button = Button(this@BaseSkinActivity)
+                    button.id = R.id.test_btn
+                    button.text = "拦截"
+                    return button
+                } else null
+            }
+
+        })
+    }
+```
+
+上面给 LayoutInflater 设置了一个 Factory，拦截了 VIew 的创建
+
+在 onCreateView 中，判断如果是 Button，就修改他显示的内容。
+
+最终的结果就是拦截成功了。
+
+---
+
+到这里整片文章就分析完了，如果有问题还请指出！！！
+
+> 参考自 红橙Darren 的视频
