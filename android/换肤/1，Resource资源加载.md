@@ -278,7 +278,7 @@ mResources.loadDrawable(value, value.resourceId, density, mTheme)
 
 1，了解皮肤文件
 
-​	皮肤文件其实就是一个 apk，将资源文件添加到项目中，然后生成一个 apk，则这个apk就是皮肤文件
+​	皮肤文件其实就是一个 apk，将资源文件添加到项目中，然后生成一个 apk，则这个apk就是皮肤文件，皮肤文件中的资源必须和项目中的一致。
 
 2，通过 Resources 获取皮肤文件中的资源文件，并加载
 
@@ -291,8 +291,7 @@ val assetManager = AssetManager::class.java.newInstance()
 val method =
     AssetManager::class.java.getDeclaredMethod("addAssetPath", String::class.java)
 method.invoke(
-    assetManager,
-    "${Environment.getExternalStorageDirectory().absolutePath}${File.separator}red.skin"
+    assetManager, "${Environment.getExternalStorageDirectory().absolutePath}${File.separator}red.skin"
 )
 
 //创建一个 Resource，具体的做法在源码中有，上面已经介绍过了。
@@ -307,7 +306,5 @@ mImageView.setImageDrawable(drawable)
 ```
 
 通过上面几步就可以加载 皮肤中的 资源文件了。**注意要申请 存储权限**
-
-
 
 以上只是一个简单的 Demo
