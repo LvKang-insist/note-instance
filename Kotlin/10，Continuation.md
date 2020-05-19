@@ -26,6 +26,7 @@ suspend fun bar(a: Int): String {
     public static final Object foo(@NotNull Continuation<? super Unit> $completion) {
         // 调用 bar 函数
         Object object = StudyOneKt.bar((int)1, $completion);
+        //如果 object 是挂起标志
         if (object == IntrinsicsKt.getCOROUTINE_SUSPENDED()) {
             return object;
         }
@@ -55,12 +56,14 @@ suspend fun bar(a: Int): String {
 ```kotlin
 //将回调转写成挂起函数
 suspend fun getData(url: String): String = suspendCoroutine { continuation ->
+     //异步执行                                                        
     val response = OkHttpClient().newCall(Request.Builder().url(url).get().build()).enqueue(object : Callback {
         override fun onFailure(call: Call, e: IOException) {
             continuation.resumeWithException(e)
         }
 
         override fun onResponse(call: Call, response: Response) {
+            //异步调用 resume 结束挂起
             continuation.resume(response.body()?.string()!!)
         }
     })
@@ -110,7 +113,7 @@ public fun <T> (suspend () -> T).createCoroutine(
     }).resume(Unit)
 ```
 
-这里使用的是CreateCoroutine ，所以后面要使用 resume。也可以直接使用 startCoroutine。后面就不用 .resume 了。看一哈源码就知道是怎么回事了。
+这里使用的是createCoroutine，所以后面要使用 resume。也可以直接使用 startCoroutine。后面就不用 .resume 了。看一哈源码就知道是怎么回事了。
 
 ------
 
