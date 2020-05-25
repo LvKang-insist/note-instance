@@ -83,7 +83,7 @@ InvocationHandler：这个接口是个动态代理类实现的，当通过代理
 
 下面 来看一下具体操作
 
-```
+```java
 public class Demo2 {
 	public static void main(String[] args) {
 		//创建目标对象
@@ -155,3 +155,4 @@ class A{
 - 静态：由程序员创建代理类或特定工具自动生成源代码再对其编译。在程序运行前代理类的.class文件就已经存在了。
 
 - 动态：在程序运行时运用反射机制动态创建而成。
+
