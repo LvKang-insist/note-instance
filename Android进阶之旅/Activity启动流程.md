@@ -176,104 +176,9 @@ private int startActivityMayWait(IApplicationThread caller, int callingUid,
                     computeResolveFilterUid(
                             callingUid, realCallingUid, mRequest.filterCallingUid));
     if (rInfo == null) {
-        UserInfo userInfo = mSupervisor.getUserInfo(userId);
-        if (userInfo != null && userInfo.isManagedProfile()) {
-            // Special case for managed profiles, if attempting to launch non-cryto aware
-            // app in a locked managed profile from an unlocked parent allow it to resolve
-            // as user will be sent via confirm credentials to unlock the profile.
-            UserManager userManager = UserManager.get(mService.mContext);
-            boolean profileLockedAndParentUnlockingOrUnlocked = false;
-            long token = Binder.clearCallingIdentity();
-            try {
-                UserInfo parent = userManager.getProfileParent(userId);
-                profileLockedAndParentUnlockingOrUnlocked = (parent != null)
-                        && userManager.isUserUnlockingOrUnlocked(parent.id)
-                        && !userManager.isUserUnlockingOrUnlocked(userId);
-            } finally {
-                Binder.restoreCallingIdentity(token);
-            }
-            if (profileLockedAndParentUnlockingOrUnlocked) {
-                rInfo = mSupervisor.resolveIntent(intent, resolvedType, userId,
-                        PackageManager.MATCH_DIRECT_BOOT_AWARE
-                                | PackageManager.MATCH_DIRECT_BOOT_UNAWARE,
-                        computeResolveFilterUid(
-                                callingUid, realCallingUid, mRequest.filterCallingUid));
-            }
-        }
+       //........
     }
-    // Collect information about the target of the Intent.
-    ActivityInfo aInfo = mSupervisor.resolveActivity(intent, rInfo, startFlags, profilerInfo);
-
-    synchronized (mService.mGlobalLock) {
-        final ActivityStack stack = mRootActivityContainer.getTopDisplayFocusedStack();
-        stack.mConfigWillChange = globalConfig != null
-                && mService.getGlobalConfiguration().diff(globalConfig) != 0;
-        if (DEBUG_CONFIGURATION) Slog.v(TAG_CONFIGURATION,
-                "Starting activity when config will change = " + stack.mConfigWillChange);
-
-        final long origId = Binder.clearCallingIdentity();
-
-        if (aInfo != null &&
-                (aInfo.applicationInfo.privateFlags
-                        & ApplicationInfo.PRIVATE_FLAG_CANT_SAVE_STATE) != 0 &&
-                mService.mHasHeavyWeightFeature) {
-            // This may be a heavy-weight process!  Check to see if we already
-            // have another, different heavy-weight process running.
-            if (aInfo.processName.equals(aInfo.applicationInfo.packageName)) {
-                final WindowProcessController heavy = mService.mHeavyWeightProcess;
-                if (heavy != null && (heavy.mInfo.uid != aInfo.applicationInfo.uid
-                        || !heavy.mName.equals(aInfo.processName))) {
-                    int appCallingUid = callingUid;
-                    if (caller != null) {
-                        WindowProcessController callerApp =
-                                mService.getProcessController(caller);
-                        if (callerApp != null) {
-                            appCallingUid = callerApp.mInfo.uid;
-                        } else {
-                            Slog.w(TAG, "Unable to find app for caller " + caller
-                                    + " (pid=" + callingPid + ") when starting: "
-                                    + intent.toString());
-                            SafeActivityOptions.abort(options);
-                            return ActivityManager.START_PERMISSION_DENIED;
-                        }
-                    }
-
-                    IIntentSender target = mService.getIntentSenderLocked(
-                            ActivityManager.INTENT_SENDER_ACTIVITY, "android",
-                            appCallingUid, userId, null, null, 0, new Intent[] { intent },
-                            new String[] { resolvedType }, PendingIntent.FLAG_CANCEL_CURRENT
-                                    | PendingIntent.FLAG_ONE_SHOT, null);
-
-                    Intent newIntent = new Intent();
-                    if (requestCode >= 0) {
-                        // Caller is requesting a result.
-                        newIntent.putExtra(HeavyWeightSwitcherActivity.KEY_HAS_RESULT, true);
-                    }
-                    newIntent.putExtra(HeavyWeightSwitcherActivity.KEY_INTENT,
-                            new IntentSender(target));
-                    heavy.updateIntentForHeavyWeightActivity(newIntent);
-                    newIntent.putExtra(HeavyWeightSwitcherActivity.KEY_NEW_APP,
-                            aInfo.packageName);
-                    newIntent.setFlags(intent.getFlags());
-                    newIntent.setClassName("android",
-                            HeavyWeightSwitcherActivity.class.getName());
-                    intent = newIntent;
-                    resolvedType = null;
-                    caller = null;
-                    callingUid = Binder.getCallingUid();
-                    callingPid = Binder.getCallingPid();
-                    componentSpecified = true;
-                    rInfo = mSupervisor.resolveIntent(intent, null /*resolvedType*/, userId,
-                            0 /* matchFlags */, computeResolveFilterUid(
-                                    callingUid, realCallingUid, mRequest.filterCallingUid));
-                    aInfo = rInfo != null ? rInfo.activityInfo : null;
-                    if (aInfo != null) {
-                        aInfo = mService.mAmInternal.getActivityInfoForUser(aInfo, userId);
-                    }
-                }
-            }
-        }
-
+   		//.....
         final ActivityRecord[] outRecord = new ActivityRecord[1];
         int res = startActivity(caller, intent, ephemeralIntent, resolvedType, aInfo, rInfo,
                 voiceSession, voiceInteractor, resultTo, resultWho, requestCode, callingPid,
@@ -282,20 +187,7 @@ private int startActivityMayWait(IApplicationThread caller, int callingUid,
                 allowPendingRemoteAnimationRegistryLookup, originatingPendingIntent,
                 allowBackgroundActivityStart);
 
-        Binder.restoreCallingIdentity(origId);
-
-        if (stack.mConfigWillChange) {
-            // If the caller also wants to switch to a new configuration,
-            // do so now.  This allows a clean switch, as we are waiting
-            // for the current activity to pause (so we will not destroy
-            // it), and have not yet started the next activity.
-            mService.mAmInternal.enforceCallingPermission(android.Manifest.permission.CHANGE_CONFIGURATION,
-                    "updateConfiguration()");
-            stack.mConfigWillChange = false;
-            if (DEBUG_CONFIGURATION) Slog.v(TAG_CONFIGURATION,
-                    "Updating to new configuration after starting activity.");
-            mService.updateConfigurationLocked(globalConfig, null, false);
-        }
+      
 
         // Notify ActivityMetricsLogger that the activity has launched. ActivityMetricsLogger
         // will then wait for the windows to be drawn and populate WaitResult.
