@@ -91,17 +91,19 @@ private static final Singleton<IActivityTaskManager> IActivityTaskManagerSinglet
 
 ​	看到 IActivityTaskManager.Stub.asInterface(b) 就可以知道是在这里获取的服务了。
 
-​	那么服务类到底是那个呢？其实就是 ActivityManagerService 
+​	那么服务类到底是那个呢？其实就是 ActivityTaskManagerService
 
 ​	上面获取完服务调用的是 服务的 startActivity，接着往下看
 
 ```java
-@Override
-public int startActivity(IApplicationThread caller, String callingPackage,
-        Intent intent, String resolvedType, IBinder resultTo, String resultWho, int requestCode,
-        int startFlags, ProfilerInfo profilerInfo, Bundle bOptions) {
-    return mActivityTaskManager.startActivity(caller, callingPackage, intent, resolvedType,resultTo, resultWho, requestCode, startFlags, profilerInfo, bOptions);
-}
+ @Override
+    public final int startActivity(IApplicationThread caller, String callingPackage,
+            Intent intent, String resolvedType, IBinder resultTo, String resultWho, int requestCode,
+            int startFlags, ProfilerInfo profilerInfo, Bundle bOptions) {
+        return startActivityAsUser(caller, callingPackage, intent, resolvedType, resultTo,
+                resultWho, requestCode, startFlags, profilerInfo, bOptions,
+                UserHandle.getCallingUserId());
+    }
 ```
 
 ​	这个 mActivityTaskManager 就是 服务端 AIDL 的实现，如下
