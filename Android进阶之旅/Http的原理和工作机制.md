@@ -1,11 +1,6 @@
 ### HTTP 是什么
 
-- 浏览器地址栏输入地址，打开网页
-- Android 中发送网络请求，返回对应内容
-
-HyperText transfetr protocol 超文本传输协议
-
-- 超文本：在电脑中显示的，含有可以指向其他文本的链接文本
+​	用于传输超文本的协议，以前是 HTML ，现在也包括 Web API 的数据。
 
 ### HTTP 的工作方式
 
@@ -70,7 +65,7 @@ HyperText transfetr protocol 超文本传输协议
 
 #### 关键内容
 
-- Request method
+- **Request method**
 
    请求的方法：如 get，post，put 等
 
@@ -110,7 +105,7 @@ HyperText transfetr protocol 超文本传输协议
 
       和 GET 几乎一样，区别就是服务器不会返回 body。
 
-- Response status code
+- **Response status code**
 
    对结果做出类型化的描述，如果获取成功，内容未找到等
 
@@ -120,17 +115,11 @@ HyperText transfetr protocol 超文本传输协议
    - 4xx：客户端错误，如 400参数错误，404 资源未找到等
    - 5xx：服务器错误
 
-- header
+- **header**
 
    **作用**：
 
    - HTTP 消息的元数据(metadata)
-
-   - 指的是数据的数据 meta... 都指的是 什么的什么
-
-   -  例子：在游戏闯关的过程中会出现一些奖励关，通过后就会奖励一条命等。这种游戏中的小游戏
-
-   -  元数据：例如在清单文件中配置 activity，我们可以配置name ，theme 等，还有一些数据我们可以自行配置，这些就是 metadata，这就是元数据
 
    -  HTTP 中的元数据：例如同 http 提交一个用户信息，信息中的 name，age 等都是数据本身，他们并不是元数据。元数据是消息的长度，消息的格式，返回的数据集，有没有压缩等。可以看做为数据的属性
 
@@ -216,8 +205,23 @@ HyperText transfetr protocol 超文本传输协议
 
    - Content-Encoding：压缩类型,如 gzip
 
+   - Cache-Control:no-cache，no-store，max-age，
+
+      - Cache 和 Buffer 的区别：**Cache：**缓存,这个东西创建好我已经用完了，但是等会可能还会使用，所以我把这个东西继续放在这里。**Buffer：**缓冲，从来都是针对工作流的。有生产的上游和消费的下游，上游多生产一些，给下游稍后使用，这个叫做 Buffer，一般是两个原因，1，上游生产太快，下游跟不上，2，下游现在不需要，等会在进行消费。
+      - no-cache：你可以缓存，当再次使用的时候需要问一下服务器资源是否失效。对于需要向服务器询问的有两类，1，资源是否改变：Etag，2，指定的日期是否到达：Last-Modified
+      - no-store：不可以缓存
+      - max-age：失效日期直接就可以直接使用
+      - private/public：我们在请求的时候并不是从客户端直接连接到服务端，中间还会有一些节点，例如 网关等很多中间节点。private 和 public 的意思是告诉这些中间的节点是否要缓存这个消息，不只是本地机器可以缓存，中间的节点也可以帮助你进行缓存。public 就可以进行缓存，private 则不能缓存
+
+   -  Last-Modified：服务器传过来文件的时候会告诉文件最近修改的日期，当你再次需要这个文件的时候就去请求服务器并且判断一下这个修改日期是否发生了改变，如果没有改变，则表示文件是最新的。
+
+      - if-Modeified-Since：是否在什么之前改动过
+
+   - Etag：对比文件本身，在从服务器获取文件的时候会附加得到一个 tag，下次获取的时候问一下服务器这个 tag 是否为最新的即可
+     - if-Noe-Match：最新的资源还是这个 tag 吗
+
 - body
 
-   body 中一般存放的是数据，如 服务器返回的数据就在 body 中，post 请求是发送的数据也在 body 中
+   要发送给服务器的内容，和服务器返回的数据内容
 
    
