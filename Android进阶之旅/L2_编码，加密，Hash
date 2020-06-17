@@ -209,3 +209,48 @@
 
 ## Hash
 
+​	把任意数据转换成指定大小（通常很小）的范围的数据，他在主要作用是 摘要，数字指纹。比如说有 200 个人，通过 hash 对这 200 个人进行编号，如 001,002等，每个编号对应着一个人，这个编号就被称作为 hash值。
+
+- 经典算法：MD5，SHA1,SHA256 等。
+
+   hash 是有算法的，他会根据算法算出对应的 hash 值。在算出 hash 值得同时也要保证碰撞率非常低，碰撞率指的就是 hash 值不相同。还有就是不容易被破解。
+
+   学过 java 的应该都知道 hashcode，可以重新 hashcode 方法进行自定义的 hash 值计算，如：
+
+   ```java
+   public int hashCode(String sources){
+   	return sources.length()
+   }
+   //传入 哈好很 得到的 hash值：3
+   //传入 哈哈	 得到的 hash 值：2
+   ```
+
+   通过上面这个简单的算法就可以得到对应的 hash 值。
+
+   如果保证 hash 值得碰撞率非常低，这就需要一些比较高深的算法了。
+
+- 实际用途
+
+   - 数据完整性验证
+
+      例如：从网上下载一个文件，这个文件的作者提供了一个 5g 的文件和一个 hash 值。然后你从网上下载，下载完成后在计算这个文件的 hash 值，如果和作者提供的一样，就说明文件没有损坏，否则的话就说明文件可能被篡改或者是损坏了。
+
+   - 快速查找：hashCode 和 HashMap
+
+      [HashMap 原理](https://blog.csdn.net/baidu_40389775/article/details/87190631?ops_request_misc=%257B%2522request%255Fid%2522%253A%2522159239973419724845010470%2522%252C%2522scm%2522%253A%252220140713.130102334.pc%255Fblog.%2522%257D&request_id=159239973419724845010470&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~blog~first_rank_v2~rank_blog_v1-1-87190631.pc_v2_rank_blog_v1&utm_term=HashMap)
+
+      [hashCode与equals的作用与区别](https://blog.csdn.net/baidu_40389775/article/details/87173379?ops_request_misc=%257B%2522request%255Fid%2522%253A%2522159239973419724845010470%2522%252C%2522scm%2522%253A%252220140713.130102334.pc%255Fblog.%2522%257D&request_id=159239973419724845010470&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~blog~first_rank_v2~rank_blog_v1-3-87173379.pc_v2_rank_blog_v1&utm_term=HashMap)
+
+      学过 java 的肯定都知道，重写 hashCode 后必须要重写 equals。这是为啥呢？
+
+      HashMap的数据结构是数组+链表的形式，通过hashCode获取对应的下标，然后在判断是否需要保存数据。 在保存数据的时候是通过 key 来保存的，这个键必须是惟一的。在保存的时候，传入 key ，然后看源码就可以发现，他会计算 key 的 hash 值，然后就会判断这个 hash 是否是惟一的，也就是 hash 是否碰撞，如果没有，则就会以这个 hash 值为key ，将值保存起来，如果 hash 不是惟一的，就说明发生了 hash 碰撞。接着就会通过 equals 判断 key 的内容是否相等，如果不相等就保存进去，否则就不保存。
+
+   - 隐私保护
+
+      有些网站保存用户信息的时候使用的是明文，就是 账号密码直接保存，在数据库中是可见的，如果数据库发送泄漏，那么别人就可以直接拿到你的账号密码。这种明文存储的坏处。
+
+      什么是不明文呢？就是对密码进行 hash。然后将对应的 hash 值保存起来。如果数据被其他人盗用，则是使用不了的。
+
+      
+
+   
