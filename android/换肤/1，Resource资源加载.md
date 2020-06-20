@@ -1,6 +1,6 @@
 **了解资源的加载过程，实现加载皮肤文件中的资源文件**
 
-### 资源加载：
+### 资源加载
 
 ​	imageView 布局中的 src 图片是怎么加载的呢？
 
@@ -274,7 +274,7 @@ mResources.loadDrawable(value, value.resourceId, density, mTheme)
 
   最终是通过 AssetManager 获取。
 
-### 通过自己创建 Resources 加载皮肤文件中的资源文件：
+### 通过自己创建 Resources 加载皮肤文件中的资源文件
 
 1，了解皮肤文件
 
