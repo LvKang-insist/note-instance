@@ -218,6 +218,7 @@
       - if-Modeified-Since：是否在什么之前改动过
 
    - Etag：对比文件本身，在从服务器获取文件的时候会附加得到一个 tag，下次获取的时候问一下服务器这个 tag 是否为最新的即可
+     
      - if-Noe-Match：最新的资源还是这个 tag 吗
 
 - body

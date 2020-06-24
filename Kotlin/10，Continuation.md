@@ -55,7 +55,7 @@ suspend fun bar(a: Int): String {
 
 ```kotlin
 //将回调转写成挂起函数
-suspend fun getData(url: String): String = suspendCoroutine { continuation ->
+suspend fun getData(url: String): String =  { continuation ->
      //异步执行                                                        
     val response = OkHttpClient().newCall(Request.Builder().url(url).get().build()).enqueue(object : Callback {
         override fun onFailure(call: Call, e: IOException) {
@@ -188,6 +188,8 @@ suspend {
 
   ​	那么 拦截器接收的 continuation 到底是谁的呢？
 
+  
+  
   ​	其实就是 suspend{} ，它本身也是一个 continuation，这里拦截的就是 suspend{} 这个 continuation，拦截了之后，每次 resume 的时候就想到于先经过拦截器，再能 resume 我们的协程本体。
 
 ![image-20200310115126399](10%EF%BC%8CContinuation.assets/image-20200310115126399.png)
