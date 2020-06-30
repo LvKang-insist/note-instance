@@ -19,6 +19,8 @@ height = bottom - top
 
 Android 3.0 开始，View 增加了几个额外的参数：x，y，translationX，translationY。其中 x，y是 View 左上角的坐标，而 translationX ，translationY 是 View 左上角 相对于父容器的偏移量。这几个参数也是相对于父容器的左边，并 translationX ，translationY 的默认值是 0。
 
+
+
 ```
 x = left + translationX
 y = top + translationY
