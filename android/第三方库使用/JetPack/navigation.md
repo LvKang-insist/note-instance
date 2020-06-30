@@ -1,4 +1,6 @@
-## Navigation 可以更加方便的使用 Fragment，使用过程非常简单，下面看一下使用方法
+## [Navigation](https://developer.android.google.cn/guide/navigation/navigation-getting-started) 可以更加方便的使用 Fragment，使用过程非常简单，下面看一下使用方法
+
+
 
 ### 1，导入依赖
 
