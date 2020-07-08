@@ -20,9 +20,7 @@
 
 ​				  onCreate --> onStartCommand --> onDestory
 
-​			注意：如果服务已经开启，不会重复调用 onCreate 方法，如果再次调用 startService方法。service 而是会  			
-
-​			调用onStart 或者 onStartCommand() 方法，停止服务时 会回调 onDestory 方法。
+​			注意：如果服务已经开启，不会重复调用 onCreate 方法，如果再次调用 startService方法。service 而是会 调用onStart 或者 onStartCommand() 方法，停止服务时 会回调 onDestory 方法。
 
  		 特点：一旦开启服务就根调用者 没有任何关系了，开启者挂了，服务不会挂。开启者不能调用服务里面的方法
 
