@@ -149,3 +149,6 @@ class MeshDrawable : Drawable() {
 如果你项目中自定义View 的时候用到了同一个 view，那么你就可以创建一个自定义的 Drawable。例如 股票图中的 蜡烛条，如果你自定义股票图，那么就需要使用很多个 蜡烛条，这个时候就可以使用 自定义 Drawable，在使用的时候直接用即可。
 
 ### 自定义 Bitmap
+
+没有人会自定义 Bitmap 的，Bitmap 里面只有尺寸和像素信息，根本就没有啥需要自定义的地方。并且 Bitmap 是final 的，根本无法被继承。所以 bitmap 不可以自定义。
+
