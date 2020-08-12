@@ -4,12 +4,10 @@
 ---
 
 #### 1，主线程的消息循环:                    
-   
-   
+
+
   android的主线程就是ActivityThread，主线程的入口方法为main，在main方法中通过Looper.prepareMainLooper()来创建主线程的Looper以及MessageQueue。并通过loop()方法来开启主线程的消息循环。
-    
-    
-```
+```java
 public static void main(String[] args) {
         ......
 
@@ -51,7 +49,7 @@ public static void main(String[] args) {
 
 ```
 Looper类中的相关方法：
-```
+```java
     static final ThreadLocal<Looper> sThreadLocal = new ThreadLocal<Looper>();
 
     private static void prepare(boolean quitAllowed) {
@@ -73,7 +71,7 @@ Looper类中的相关方法：
     }
 ```
 
-```
+```java
     //Looper类的构造方法
     private Looper(boolean quitAllowed) {
         mQueue = new MessageQueue(quitAllowed);
@@ -85,7 +83,7 @@ Looper类中的相关方法：
     }
 ```
 
-```
+```java
 public static void loop() {
         //贴出相关源码....
 
@@ -136,9 +134,8 @@ public static void loop() {
 - 最后 在 看一下main方法中的looper.loop()方法，loop方法是一个死循环，唯一跳出循环的方式是MessageQueue的next方法返回了null。在loop方法的第一句 先得到 当前线程的looper对象。如果为空直接抛出异常。往下看 是一个死循环，循环的第一句调用next()从消息队列中取出一条消息，这个方法是阻塞的。没有消息时next方法会一直阻塞在哪里。这也导致loop方法一直阻塞在哪里。当next方法返回了新的消息，Looper就会处理这条消息： msg.target.dispatchMessage(msg) msg.target是发送这条消息的Handler对象，这样handler发送的消息最终又交给它的dispatchMessage方法来处理了。
 Looper类 有两个方法来通知消息队列的退出，quit或者quitSafely方法来通知消息队列的退出，当消息队列被标记为退出状态时 ，它的next方法就会返回null。
 
-
 ---
-    
+
 
 ### 2,Handler的工作原理
 
@@ -147,7 +144,7 @@ handler的主要作用就是用来发送和接收消息，发送可以通过send
 ##### 首先看一下他的构造方法
 
 
-```
+```java
      public Handler() {
         this(null, false);
     }
@@ -181,7 +178,7 @@ handler的主要作用就是用来发送和接收消息，发送可以通过send
 ##### 然后就是发送消息和处理消息
 
 
-```
+```java
     public final boolean sendMessage(Message msg)
     {
         return sendMessageDelayed(msg, 0);
@@ -219,7 +216,7 @@ handler的主要作用就是用来发送和接收消息，发送可以通过send
 可以看到当调用sendMessage发送消息时，到最后只是将这条消息放在了消息队列中。在将消息放在队列之前将handle的对象传给了msg.target，这也就是为什么在Looper的loop方法中可以使用msg.target的原因。看了上面主线程的消息循环可知，在Looper的loop方法中 会不断从消息队列中读取消息，当读取到消息的后 Looper会将读取到的消息交给handle的dispatchMessage方法来处理。这时handler就进入到了处理消息的阶段
 
 
-```
+```java
 public void dispatchMessage(Message msg) {
         if (msg.callback != null) {
             handleCallback(msg);
@@ -235,7 +232,7 @@ public void dispatchMessage(Message msg) {
 ```
 handler通过dispatchMessage方法来处理消息，首先判断callback是否为空，不为空则是post发送的消息，这里在handleCallback方法里面直接回调 执行post发送时实现的run方法。
 
-```
+```java
 private static void handleCallback(Message message) {
         message.callback.run();
     }
@@ -243,7 +240,7 @@ private static void handleCallback(Message message) {
 如果为空则 说明是send发送的消息 然后判断mCallback是否为空。mCallback是一个接口，先来看一下他的定义:
 
 
-```
+```java
 /**
      * Callback interface you can use when instantiating a Handler to avoid
      * having to implement your own subclass of Handler.
@@ -258,7 +255,7 @@ private static void handleCallback(Message message) {
 ```
 当mCallback 不为空 就说明handler没有子类，不需要实现handleMessage方法，如下所示
 
-```
+```java
  Handler handler = new Handler(new Handler.Callback() {
             @Override
             public boolean handleMessage(Message msg) {
@@ -272,7 +269,7 @@ private static void handleCallback(Message message) {
 ### 3，消息队列的工作原理
 消息队列指的是 MessageQueue ，MessageQueue主要包含两个操作，插入和读取，对应的方法分别是 enqueueMessage 和 next 。enqueueMessage是插入一条消息，next 从消息队列中读取一条消息并将其移除。虽然 MessageQueue 叫消息队列，但是 它里面实现的是单链表。下面主要看一下他的插入和读取的方法。
 
-```
+```java
 boolean enqueueMessage(Message msg, long when) {
        ......
         synchronized (this) {
@@ -320,7 +317,7 @@ boolean enqueueMessage(Message msg, long when) {
 由上可知，这里的主要操作就是单链表，满足条件插入到最前面，否则插入到合适的位置。
 
 
-```
+```java
 Message next() {
         //贴出关键代码......
         
@@ -388,14 +385,12 @@ looper具体的作用就是不断的从消息队列中取出消息，有消息�
 - prepareMainLooper() 这个方法是给主线程创建Looper使用的，本质也是通过prepare来实现的，Looper还提供了一个getMainLooper()可以拿到当前looper的对象。
 - Looper的退出，Looper提供了quit和quitSafely来退出Looper，两者的区别是quit会直接退出Looper，而quitSafely只是设定一个标记，当队列中消息处理完后 才会退出Looper。Looper退出后 handler发送的消息会失败，send方法就会返回false。在子线程种如果创建了Looper，那么在使用完成后一定要quit终止消息，否则这个线程 就会一直处于阻塞状态。
 - loop()方法，这个方法在讲主线程消息循环的时候 已经说过了，不太懂的可以在看一下。
- 
 
 ---
 
 ### 5，Message：
 
 Message是在多个线程之间传递的消息，其内部可以携带少量的信息，用于在不同的线程中进行交互。
-
 
 ---
 基本的已经说完了，下面看一下使用的过程。
@@ -405,7 +400,6 @@ Message是在多个线程之间传递的消息，其内部可以携带少量的�
 3. 在子线程中使用handler.sendMessage()发送消息，最后会调用enqueueMessage()将消息添加到消息队列中。注意在发送消息的时候 最后会将当前handler的实例传入到消息中。
 4. Looper的loop方法检测到消息队列中有消息，然后获取一个可以处理的消息。从获取的消息中拿到handler的实例然后调用dispatchMessage()方法。然后消息又回到了handler中。
 5. 最后在handler的dispatchMessage()方法中对消息进行处理。然后根据不同的情况分别进行处理。这样就是Handler机制的整个流程。
-
 
 ---
 
