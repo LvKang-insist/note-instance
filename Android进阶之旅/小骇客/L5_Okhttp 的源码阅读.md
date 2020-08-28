@@ -69,7 +69,7 @@ call.enqueue(object : okhttp3.Callback {
   }
 ```
 
-在 enqueue 中 将 callback 转交给了 dispather，并创建了一个异步的Call  。下面分别看一下 dispatcher，enqueue 和 AsyncCall 分别是什么东西
+在 enqueue 中 将 callback 转交给了 dispather，并创建了一个异步的 AsyncCall。下面分别看一下 dispatcher，enqueue 和 AsyncCall 分别是什么东西
 
 - **dispatcher**
 

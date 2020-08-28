@@ -1,4 +1,4 @@
-​		ContentProvider 即内容提供者，是 Android 四大组件之一。主要用于进程间进行数据交互，共享。及跨进程通信。其底层采用的是 Android 中的 Binder 机制。ContentProvider 就像是两个进程之间的搬用工，正真存储/操作数据的数据源还是原来的存储方式。数据源可以是 ：数据库，文件，XML，网络等。
+​	**ContentProvider 即内容提供者，是 Android 四大组件之一。主要用于进程间进行数据交互，共享。及跨进程通信。其底层采用的是 Android 中的 Binder 机制。ContentProvider 就像是两个进程之间的搬用工，正真存储/操作数据的数据源还是原来的存储方式。数据源可以是 ：数据库，文件，XML，网络等。**
 
 ​		统一资源标识符（URI）：唯一表示 ContentProvider 和 其中的数据，外界进程通过 URI 找到对应的 ContentProvider 和其中的数据，在进行数据操作。URI 分为系统预置和自定义，分别对应系统内置的数据(如联系人，日历等) 和 自定义数据库
 

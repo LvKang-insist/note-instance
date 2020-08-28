@@ -52,7 +52,7 @@ public class MainActivity extends AppCompatActivity {
 ---
 #### 下面我们分析一下他set()方法的源码
 
-```
+```java
 public class ThreadLocal<T> {
 
     public void set(T value) {
@@ -100,7 +100,7 @@ public class ThreadLocal<T> {
 ---
 #### 然后 分析一下 get 
 
-```
+```java
 public class ThreadLocal<T> {
     public T get() {
         //
@@ -149,7 +149,7 @@ public class ThreadLocal<T> {
 简单的总结一下，其实和set非常相似，都是先 拿到当前线程对象，然后在去通过getMap()方法拿到当前线程中的ThreadLocal.ThreadLocalMap 的引用，如果为空，则表示没有保存过数据，直接调用setInitiaValue()对向前线程进行初始化，然后返回null。如果不为空，则通过getEntry()方法拿到保存的对象，判断这个对象不为空 就拿到保存的Value然后返回，否则 就调用setInitiaValue()进行初始化，然后返回null。
 
 ---
-从ThreadLocal的set 和 get 方法可以看出，==他们操作的都是根据当前线程中的ThreadLocal.ThreadLocalMap threadLocals = null 来判断当前线程有没有保存数据，如果保存了，就会在当前线程中产生一个ThreadLocalMap 的对象 。数据就会保存在这个对象 里面，如果 没有保存过数据，那么当前线程中的ThreadLocalMap 就会为空==。他们对ThreadLocal 所做的读/写操作仅限于线程的内部。因此在不同线程中访问同一个ThreadLocal的 set 和 get 方法 所得到的值 也是不一样的。
+从ThreadLocal的set 和 get 方法可以看出，他们操作的都是根据当前线程中的ThreadLocal.ThreadLocalMap threadLocals = null 来判断当前线程有没有保存数据，如果保存了，就会在当前线程中产生一个ThreadLocalMap 的对象 。数据就会保存在这个对象 里面，如果 没有保存过数据，那么当前线程中的ThreadLocalMap 就会为空==。他们对ThreadLocal 所做的读/写操作仅限于线程的内部。因此在不同线程中访问同一个ThreadLocal的 set 和 get 方法 所得到的值 也是不一样的。
 
 
 > 参考自Android开发艺术探索，如有错误，还请指出，谢谢！
