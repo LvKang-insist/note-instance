@@ -75,8 +75,6 @@ public void onStop() {
 public void onDestroy() {
     super.onDestroy();
     dispatch(Lifecycle.Event.ON_DESTROY);
-    // just want to be sure that we won't leak reference to an activity
-    mProcessListener = null;
 }
 
 private void dispatch(Lifecycle.Event event) {
@@ -110,11 +108,16 @@ private void dispatch(Lifecycle.Event event) {
 
 ​	LifecycleRegistry 是一个订阅类，并且继承自 Lifecycle 抽象类
 
-​	Lifecycle 的抽象类中包括：添加观察者，取消观察者，获取当前生命周期的状态的抽象方法，以及对应生命周期的枚举，和 当前状态枚举
+​	Lifecycle 抽象类中包括：添加观察者，取消观察者，获取当前生命周期的状态的抽象方法，以及对应生命周期的枚举，和 当前状态枚举
 
 ​	接着看一下 LifecycleRegistry： 一个可以处理多个观察者的「生命周期」的实现。看一下其中比较重要的方法：
 
+​	**添加观察者**
+
 ```kotlin
+    private FastSafeIterableMap<LifecycleObserver, ObserverWithState> mObserverMap = new FastSafeIterableMap<>();
+		
+
 		@Override
     public void addObserver(@NonNull LifecycleObserver observer) {
         //如果当前状态是销毁状态，则设置为销毁状态，否则为初始化状态
@@ -128,29 +131,116 @@ private void dispatch(Lifecycle.Event event) {
         if (previous != null) {
             return;
         }
+
         LifecycleOwner lifecycleOwner = mLifecycleOwner.get();
         if (lifecycleOwner == null) {
             // it is null we should be destroyed. Fallback quickly
             return;
         }
-
+			  //mAddingObserverCounter 表示正在添加观察者的数量
         boolean isReentrance = mAddingObserverCounter != 0 || mHandlingEvent;
+       //获取到上一个的状态
         State targetState = calculateTargetState(observer);
         mAddingObserverCounter++;
+       //循环，将新添加的观察者的状态更新到指定的 targetState
         while ((statefulObserver.mState.compareTo(targetState) < 0
                 && mObserverMap.contains(observer))) {
+          	//将状态保存到 mParentState 中
             pushParentState(statefulObserver.mState);
             statefulObserver.dispatchEvent(lifecycleOwner, upEvent(statefulObserver.mState));
             popParentState();
             // mState / subling may have been changed recalculate
             targetState = calculateTargetState(observer);
         }
-
+		
+      	//没有事件正在处理，或者是添加了 observer ，则需要同步一次状态
         if (!isReentrance) {
             // we do sync only on the top level.
             sync();
         }
         mAddingObserverCounter--;
+    }
+//计算目标状态
+ private State calculateTargetState(LifecycleObserver observer) {
+   		// 拿到当前 observer 的上一个的 observer
+        Entry<LifecycleObserver, ObserverWithState> previous = mObserverMap.ceil(observer);
+				//获取到上一个 observer 的状态
+        State siblingState = previous != null ? previous.getValue().mState : null;
+   			//如果父级状态不为 null，则获取他的状态
+        State parentState = !mParentStates.isEmpty() ? mParentStates.get(mParentStates.size() - 1)
+                : null;
+   		//获取到最小状态
+        return min(min(mState, siblingState), parentState);
+    }
+```
+
+**删除观察者**
+
+```java
+@Override
+public void removeObserver(@NonNull LifecycleObserver observer) {
+	  //移除对应的 observer
+    mObserverMap.remove(observer);
+}
+```
+
+**获取当前状态**
+
+```
+@Override
+public State getCurrentState() {
+    return mState;
+}
+```
+
+更新状态  **handleLifecycleEvent 方法** 
+
+通过 ReportFragment 类可以知道状态改变后最终调用的是 handleLifecycleEvent 方法：
+
+```java
+public void handleLifecycleEvent(@NonNull Lifecycle.Event event) {
+		//拿到下一个状态
+    State next = getStateAfter(event);
+    moveToState(next);
+}
+
+private void moveToState(State next) {
+    if (mState == next) {
+        return;
+    }
+    mState = next;
+  	//如果正在处理上一次的事件，就标记 mNewEventOccurred 为 true，然后退出
+    if (mHandlingEvent || mAddingObserverCounter != 0) {
+        mNewEventOccurred = true;
+        // we will figure out what to do on upper level.
+        return;
+    }
+  //更新正在处理的状态为 true
+    mHandlingEvent = true;
+    sync();
+  //处理结束，false
+    mHandlingEvent = false;
+}
+
+private void sync() {
+        LifecycleOwner lifecycleOwner = mLifecycleOwner.get();
+        if (lifecycleOwner == null) {
+            throw new IllegalStateException("LifecycleOwner of this LifecycleRegistry is already"
+                    + "garbage collected. It is too late to change lifecycle state.");
+        }
+        while (!isSynced()) {
+            mNewEventOccurred = false;
+            // no need to check eldest for nullability, because isSynced does it for us.
+            if (mState.compareTo(mObserverMap.eldest().getValue().mState) < 0) {
+                backwardPass(lifecycleOwner);
+            }
+            Entry<LifecycleObserver, ObserverWithState> newest = mObserverMap.newest();
+            if (!mNewEventOccurred && newest != null
+                    && mState.compareTo(newest.getValue().mState) > 0) {
+                forwardPass(lifecycleOwner);
+            }
+        }
+        mNewEventOccurred = false;
     }
 ```
 
