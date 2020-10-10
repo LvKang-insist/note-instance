@@ -304,3 +304,74 @@ abstract class CacheDatabase : RoomDatabase() {
 
   更新操作，有冲突，需要使用上面的注解进行标注出现冲突后的操作
 
+### 3，数据库升级
+
+​	一般的升级无法就是修改表名，添加字段等，在 Room 中如果需要升级数据库，需要如下几个步骤
+
+- 在被 Entity 标注的实体类中添加对应的字段
+
+  ~~~kotlin
+  @Entity(tableName = "user")
+  data class UserEntity(
+      @PrimaryKey(autoGenerate = true)
+      var id: Long = 0,
+      var name: String,
+      var age: Int,
+      var love: String,
+      val ccc: String,
+      var sex: String
+  )
+  ~~~
+
+- 修改数据库版本，版本+1
+
+- 设置 migrations
+
+  ~~~kotlin
+  val MIGRATION_1_2 = object : Migration(1,2){
+      override fun migrate(database: SupportSQLiteDatabase) {
+          database.execSQL("""alter table user add column love char not null default "" """)
+      }
+  }
+  ~~~
+
+  ```kotlin
+   Room.databaseBuilder(
+              Latte.getAppContext(), AppDataBase::class.java, "knife"
+          )
+  .addMigrations(MIGRATION_1_2)
+  .build()
+  ```
+
+**如果是跨多个版本升级呢？**
+
+则每次升级都需要保留对应的 migration，如：
+
+~~~kotlin
+val MIGRATION_1_2 = object : Migration(1,2){
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("""alter table user add column love char not null default "" """)
+    }
+}
+val MIGRATION_2_3 = object : Migration(1,2){
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("""alter table user add column ccc char not null default "" """)
+    }
+}
+
+~~~
+
+```kotlin
+.addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+```
+
+使用上面这种方式即可！！
+
+
+
+```
+Log.e("-----?>11111", "onUpLoadSuccess: "+state +"------"+ imageUri);
+
+                                Log.e("-----?>", "onUpLoadSuccess: 成功");
+
+```
