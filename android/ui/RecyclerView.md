@@ -205,41 +205,91 @@ RecyclerView 中缓存的其实是 ViewHolder。ViewHolder和 item 实际上是�
 
     那么如何使用呢？
 
-    ```java
-    private List<User> list ;
-    public void swapData(List<User> newList,boolean diff){
-    	if(diff){
-    		//UserDiffCallBack实现类，
-    		DiffUtili.DiffResult diffResult = DiffUtil.calculateDiff(new UserDiffCallBack(userList,newList),false)
-    		//..... 
-    		list = newList
-    		//添加回调，this 是当前的 adapter
-    		diffResult.dispatchUpdatesTo(this)
-    	}else{
-    		//更新数据
-    		list = newList
-    		//刷新数据
-    		notifyDataSetChanged()
-    	}
-    }
-    ```
+    经过测试，发现适用的场景如下：
 
-    ```java
-    public void onBindViewHolder(@NonNull VH holder, int position,
-            @NonNull List<Object> payloads) {
-       if(payloads.isEmpty()){
-           //默认的，全量更新
-           onBindViewHolder(holder,position);
-       }else{
-           //根据差异计算出来的增量更新
-           Bundle payload = (Bundle)payloads.get(0);
-           String value =  payload.get("key");
-           holder.name.setText(value);
-       }
-    }
-    ```
+    在刷新列表的时候，一般情况下的操作是，清空原有的数据，然后填入新的数据，最后not.....
 
-    一般我们使用的是两个参数的onBindViewHolder，但是有一个三个参数的 onBindViewHolder 方法，通过第三个参数可以判断出来差异，然后在确定是否要使用具体的内容
+    但是使用了 Diff 之后，在刷新列表的时候，只需要填入新的数据，然后调用 Diff 的方法，即可。在内部会通过算法进行计算出差异，然后保留新的数据。这里的保留指的是 ，在原来数据的基础上进行增删改查，使其最终的结果和刷新的数据一样。看一下案例即可清楚，如下：
+
+    - 默认的刷新
+
+    <img src="RecyclerView.assets/345.gif" alt="345" style="zoom:50%;" />
+
+    - 使用 Diff 之后
+
+      <img src="RecyclerView.assets/345-1603816452882.gif" alt="345" style="zoom:50%;" />
+
+    通过上面的图可以看到，使用 Diff 之后可以看到明显的动画痕迹。使用 Diff 后，会将新数据中和原有数据相同的 item 进行保留，不相同的全部 remove (这里指的是旧数据列表的数据)，最后再将新数据中的数据添加进来。这样就可以避免直接调用 notifyDataSetChanged() 而产生的性能消耗和列表的卡顿。
+
+  - 甚至，可以看到那些数据是重复的：
+
+    <img src="RecyclerView.assets/345-1603817224072.gif" alt="345" style="zoom:50%;" />
+
+  下面就看一下具体的实现过程
+
+  
+
+  ```java
+  class RvDiffItemCallback(val old: List<String>, val new: List<String>) : DiffUtil.Callback() {
+  
+  
+      override fun getOldListSize(): Int {
+          return old.size
+      }
+  
+      override fun getNewListSize(): Int {
+          return new.size
+      }
+  
+      override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+  
+          return old[oldItemPosition] == new[newItemPosition]
+      }
+  
+  
+      override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+          return old[oldItemPosition] == new[newItemPosition]
+      }
+  }
+  ```
+
+  
+
+  ```java
+  private List<User> list ;
+  public void swapData(List<User> newList,boolean diff){
+  	if(diff){
+  		//UserDiffCallBack实现类，
+  		DiffUtili.DiffResult diffResult = DiffUtil.calculateDiff(new UserDiffCallBack(userList,newList),false)
+  		//..... 
+  		list = newList
+  		//添加回调，this 是当前的 adapter
+  		diffResult.dispatchUpdatesTo(this)
+  	}else{
+  		//更新数据
+  		list = newList
+  		//刷新数据
+  		notifyDataSetChanged()
+  	}
+  }
+  ```
+
+  ```java
+  public void onBindViewHolder(@NonNull VH holder, int position,
+          @NonNull List<Object> payloads) {
+     if(payloads.isEmpty()){
+         //默认的，全量更新
+         onBindViewHolder(holder,position);
+     }else{
+         //根据差异计算出来的增量更新
+         Bundle payload = (Bundle)payloads.get(0);
+         String value =  payload.get("key");
+         holder.name.setText(value);
+     }
+  }
+  ```
+
+  一般我们使用的是两个参数的onBindViewHolder，但是有一个三个参数的 onBindViewHolder 方法，通过第三个参数可以判断出来差异，然后在确定是否要使用具体的内容
 
   - 如果在列表差异很大的时候计算 diff
 
@@ -249,9 +299,43 @@ RecyclerView 中缓存的其实是 ViewHolder。ViewHolder和 item 实际上是�
 
     这三个方法都做了同一件事，将计算差异放在后台线程执行。
 
-### 8，为什么 ItemDecoration 可以绘制风分割线
+### 8， ItemDecoration  绘制风分割线
+
+​		简单的看一下源码
+
+```java
+public abstract static class ItemDecoration {
+    /**
+     * 在 itemView 之前绘制，会出现在 item 的下面
+     */
+    public void onDraw(@NonNull Canvas c, @NonNull RecyclerView parent, @NonNull State state) {
+        onDraw(c, parent);
+    }
 
 
+    /**
+     * 在 itemView 的上面绘制，覆盖在上面
+     * @param c Canvas to draw into
+     * @param parent RecyclerView this ItemDecoration is drawing into
+     * @param state The current state of RecyclerView.
+     */
+    public void onDrawOver(@NonNull Canvas c, @NonNull RecyclerView parent,
+            @NonNull State state) {
+        onDrawOver(c, parent);
+    }
+
+    /**
+     * Item 的偏移
+     */
+    public void getItemOffsets(@NonNull Rect outRect, @NonNull View view,
+            @NonNull RecyclerView parent, @NonNull State state) {
+        getItemOffsets(outRect, ((LayoutParams) view.getLayoutParams()).getViewLayoutPosition(),
+                parent);
+    }
+}
+```
+
+结合 DividerItemDecoration 的源码即可清楚。
 
 
 
