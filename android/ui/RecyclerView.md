@@ -4,7 +4,7 @@
 
 - 为有限的屏幕显示大量的数据且灵活的View，如下图
 
-<img src="D:\android\note-instance\android\ui\RecyclerView.assets\image-20201023224410224.png" alt="image-20201023224410224" style="zoom:50%;" />
+<img src="..\ui\RecyclerView.assets\image-20201023224410224.png" alt="image-20201023224410224" style="zoom:50%;" />
 
 - 相比较 ListView
 
