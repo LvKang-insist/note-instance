@@ -1,7 +1,7 @@
 ### MVC
 
 - M：表示 Bean
-- V：表示 View已经子类
+- V：表示 页面
 - C：Activity 和 Fragment 已经子类
 
 ### MVP

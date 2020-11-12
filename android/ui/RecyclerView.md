@@ -227,76 +227,109 @@ RecyclerView 中缓存的其实是 ViewHolder。ViewHolder和 item 实际上是�
 
   下面就看一下具体的实现过程
 
-  
+  - 使用 diff 
 
-  ```java
-  class RvDiffItemCallback(val old: List<String>, val new: List<String>) : DiffUtil.Callback() {
+    ~~~java
+    class RvDiffItemCallback(val old: List<String>, val new: List<String>) : DiffUtil.Callback() {
+        override fun getOldListSize(): Int {
+            return old.size
+        }
+    
+        override fun getNewListSize(): Int {
+            return new.size
+        }
+    	//判断id是否相同，由于是 string，没有id，所以就直接比较了
+        override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+    
+            return old[oldItemPosition] == new[newItemPosition]
+        }
+    
+    	//判断内容是否相同
+        override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+            return old[oldItemPosition] == new[newItemPosition]
+        }
+    }
+    ~~~
   
+    ~~~kotlin
+  class Adapter() : RecyclerView.Adapter<Adapter.Holder>() {
+            var data = mutableListOf<String>()
+          
+            fun addNewData(list: MutableList<String>) {
+                val diffResult = DiffUtil.calculateDiff(RvDiffItemCallback(data, list), false)
+                data = list
+                    //如果不需要看到动画，则直接传入this，否则自己实现即可
+    //            diffResult.dispatchUpdatesTo(this)
+                diffResult.dispatchUpdatesTo(object : ListUpdateCallback {
+                    override fun onChanged(position: Int, count: Int, payload: Any?) {
+                        notifyItemRangeChanged(position, count, payload)
+                    }
+    
+                    override fun onMoved(fromPosition: Int, toPosition: Int) {
+                        notifyItemMoved(fromPosition, toPosition)
+                    }
+    
+                    override fun onInserted(position: Int, count: Int) {
+                        notifyItemRangeInserted(position, count)
+    
+                    }
   
-      override fun getOldListSize(): Int {
-          return old.size
-      }
+                    override fun onRemoved(position: Int, count: Int) {
+                        notifyItemRangeRemoved(position, count)
+                    }
+    
+                })
+            }
+        //................
+    }
+    ~~~
   
-      override fun getNewListSize(): Int {
-          return new.size
-      }
+  - 使用 diff 进行增量更新
   
-      override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+    在 areContentsTheSame 方法中判断内容是否相同，如果相同，就不会去加载这个 item。如果内容不相同，则会返回 false，则可以对数据进行更新。实现 getChangePayload 方法即可
   
-          return old[oldItemPosition] == new[newItemPosition]
-      }
-  
-  
-      override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-          return old[oldItemPosition] == new[newItemPosition]
-      }
+  ```kotlin
+    override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+      return old[oldItemPosition] != new[newItemPosition]
+    }
+  override fun getChangePayload(oldItemPosition: Int, newItemPosition: Int): Any? {
+        val payload = Bundle()
+        payload.putString("key", "${old[oldItemPosition]} = ${new[newItemPosition]} 重复的值")
+        return payload
   }
-  ```
-
+    ```
   
-
-  ```java
-  private List<User> list ;
-  public void swapData(List<User> newList,boolean diff){
-  	if(diff){
-  		//UserDiffCallBack实现类，
-  		DiffUtili.DiffResult diffResult = DiffUtil.calculateDiff(new UserDiffCallBack(userList,newList),false)
-  		//..... 
-  		list = newList
-  		//添加回调，this 是当前的 adapter
-  		diffResult.dispatchUpdatesTo(this)
-  	}else{
-  		//更新数据
-  		list = newList
-  		//刷新数据
-  		notifyDataSetChanged()
-  	}
-  }
-  ```
-
-  ```java
-  public void onBindViewHolder(@NonNull VH holder, int position,
-          @NonNull List<Object> payloads) {
-     if(payloads.isEmpty()){
-         //默认的，全量更新
-         onBindViewHolder(holder,position);
-     }else{
-         //根据差异计算出来的增量更新
-         Bundle payload = (Bundle)payloads.get(0);
-         String value =  payload.get("key");
-         holder.name.setText(value);
-     }
-  }
-  ```
-
-  一般我们使用的是两个参数的onBindViewHolder，但是有一个三个参数的 onBindViewHolder 方法，通过第三个参数可以判断出来差异，然后在确定是否要使用具体的内容
-
+    areContentsTheSame 返回 false 之后，下面的方法才会调用，在这个方法中创建一个有效的对象，然后返回即可。
+  
+    由于在 areItemsTheSame 中比较 id 的时候直接比较的是内容。所以在比较内容的时候进行取反，对相同的内容进行增量更新（一般情况下增量更新的都是 id 相同 且 内容不同的 item 进行更新）
+  
+    然后在  adapter 中修改如下：
+  
+    ```kotlin
+    override fun onBindViewHolder(holder: Holder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.isEmpty()) {
+            onBindViewHolder(holder, position)
+        } else {
+            //增量更新
+            val pay = payloads[0] as Bundle
+            val value = pay.get("key") as String
+            holder.tvText.text = value
+        }
+    }
+    ```
+  
+    onBindViewHolder 是三个参数的方法，如没有增量，则调用原有的 onBindViewHolder。否则使用增量的数据。
+  
+    最终的效果就是，上面的最后一张图；
+  
+    这里只是演示一下增量的用法，具体的判断应该自行实现，上述代码只是写起来简单，看一下效果。
+  
   - 如果在列表差异很大的时候计算 diff
-
+  
     - 使用 Thread 将 DiffResult 发送到主线程
     - 使用 RxJava 将 calculateDiff 操作放在后台线程
     - 使用 Google 提供的 AsyncListDiffer(Executor)/ListAdapter(Recycler包下的 ListAdapter，不是平常使用的 adapter)。他把这件事进行了封装。
-
+  
     这三个方法都做了同一件事，将计算差异放在后台线程执行。
 
 ### 8， ItemDecoration  绘制风分割线
@@ -311,8 +344,6 @@ public abstract static class ItemDecoration {
     public void onDraw(@NonNull Canvas c, @NonNull RecyclerView parent, @NonNull State state) {
         onDraw(c, parent);
     }
-
-
     /**
      * 在 itemView 的上面绘制，覆盖在上面
      * @param c Canvas to draw into
@@ -336,8 +367,6 @@ public abstract static class ItemDecoration {
 ```
 
 结合 DividerItemDecoration 的源码即可清楚。
-
-
 
 
 
