@@ -2,7 +2,6 @@ java 的并发集合有哪些，和同步集合有哪些区别：
 - ConcurrentHashMap
 - CopyOnWriteArrayList
 - CopyOnWriteArraySet
-- 
 
 1. ConcurrentHashMap和HashTable的区别
 
@@ -10,7 +9,6 @@ java 的并发集合有哪些，和同步集合有哪些区别：
 2. ConcurrentHashMap和Collections.synchronizedMap之间的区别
 
 Collections.synchronizedMap和HashTable 一样，现上在调用map所有方法时，都对整个map进行同步，而ConcurrentHashMap的实现却更加精细，它对map中的所有桶加了锁。所以，只要要有一个线程访问map，其他线程就无法进入map，而如果一个线程在访问ConcurrentHashMap某个桶时，其他线程，仍然可以对map执行某些操作。
-
 
 ---
 
@@ -21,7 +19,7 @@ JAVA 并发集合
 CopyOnWriteArrayList：
 
 add：
-```
+```java
     private transient volatile Object[] array;
     
     public boolean add(E e) {
@@ -51,7 +49,7 @@ add：
 首先是 拿到锁对象，然后获得锁，通过getArray方法拿到的数组，在拿到数组的长度，然后复制一个新的数组，长度为原来数组+1，然后将要保存的数据存入到数组，最后调用setArray方法使用复制的数组将原来的数组覆盖。
 
 get：
-```
+```java
     public E get(int index) {
         return get(getArray(), index);
     }
@@ -70,7 +68,7 @@ Vector和CopyOnWriteArrayList是两个线程安全的List，Vector读写操作�
 CopyOnWriteArraySet：
 
 add：
-```
+```java
     private final CopyOnWriteArrayList<E> al;
     //构造器
     public CopyOnWriteArraySet() {
@@ -152,7 +150,7 @@ add：
 get：
 CopyOnWriteArraySet没有get方法，只能通过迭代器来实现遍历。
 
-```
+```java
  ·public Iterator<E> iterator() {
         return al.iterator();
     }
@@ -200,4 +198,4 @@ CopyOnWriteArraySet没有get方法，只能通过迭代器来实现遍历。
 ```
 
 > 如有错误 ，还请指出，谢谢
- 
+
