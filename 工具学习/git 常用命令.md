@@ -1,4 +1,4 @@
-- **git 提交规范**
+- **\git 提交规范**
 
   feat： 新增 feature
 
