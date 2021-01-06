@@ -24,3 +24,6 @@
 
   :q! 不保存退出
 
+```
+.toFloatOrNull() != null
+```
