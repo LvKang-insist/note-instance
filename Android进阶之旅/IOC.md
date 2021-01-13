@@ -157,7 +157,10 @@ object ViewUtils {
         val fields = clazz.declaredFields
         //获取 viewById 中的 value 值
         fields.forEach {
-            val viewById = it.getAnnotation(ViewById::class.java)
+            val viewById =
+            
+            
+            it.getAnnotation(ViewById::class.java)
             if (viewById != null) {
                 //获取注解的id值
                 val id = viewById.value
