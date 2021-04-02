@@ -1,4 +1,4 @@
-- **\git 提交规范**
+- **git 提交规范**
 
   feat： 新增 feature
 
@@ -23,7 +23,3 @@
   :wq 保存退出
 
   :q! 不保存退出
-
-```
-.toFloatOrNull() != null
-```
