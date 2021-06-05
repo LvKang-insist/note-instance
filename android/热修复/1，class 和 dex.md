@@ -17,7 +17,7 @@
 
 ​		并不是只有 java 语言才能生成 class 文件，当然还有其他的一下语言:
 
-​	![1573269124110](class%20%E5%92%8C%20dex.assets/1573269124110.png)
+​	![1573269124110](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604154803.png)
 
 
 
@@ -68,7 +68,7 @@
 
 access_flags ：作用域
 
-![1573278691458](class%20%E5%92%8C%20dex.assets/1573278691458.png)
+![1573278691458](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604154837.png)
 
 这个图清楚地表示了 access_flags 字段的作用域。
 
@@ -98,7 +98,7 @@ struct cp_info_constant_pool[0] 中的 u2，代表的是无符号数，u2 代表
 
 ​	在常量池中有14种类型，这个常量都是一个表，每一个表都有各自组成的机构，这写常量都有一个特点，每个常量的开始都是一个用 u1 类型的无符号数表示的标志位，如下表所示：
 
- ![https://upload-images.jianshu.io/upload_images/4179925-1d5f4a103a509c17.png](class%20%E5%92%8C%20dex.assets/4179925-1d5f4a103a509c17.png) 
+ ![4179925-1d5f4a103a509c17](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604154851.png)
 
 常量池中第一个 struct cp_info constant_poll[0] ，他的后面是 Methodref ，标志是 10 ，我们和上面的表对比一下，找到第 10 个，也是 Methodref ，通过这个表，我们可以查看 u1 tag 到底表示的是那种类型。
 
@@ -142,7 +142,7 @@ struct cp_info_constant_pool[0] 中的 u2，代表的是无符号数，u2 代表
 
 ​	整个应用中所有的 java 源文件都放在一个dex中，这里不考虑 multidex
 
-![1573285094072](class%20%E5%92%8C%20dex.assets/1573285094072.png)
+![1573285094072](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604154907.png)
 
 ##### 	dex 文件头
 
@@ -172,15 +172,15 @@ struct cp_info_constant_pool[0] 中的 u2，代表的是无符号数，u2 代表
 
    ​	下面我们可以看一下 string_ids_size 的16进制和off 的16进制，分别为10 00 00 00 和 70 00 00 00，前者转换10进制后为 16，说明 size 有 16 个字符串，off 则代表偏移 70h ， 最后一个空字符“0”表示的是结尾 。然后我们找到70h 看一下
 
-   ​	 ![img](class%20%E5%92%8C%20dex.assets/UUV%5BI4N288JGZLWAZ5FGPAE.png) 
+   ​	  ![12343145](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155039.png)
 
    下面我们看一下70h 
 
-   ![1573450765210](class%20%E5%92%8C%20dex.assets/1573450765210.png)
+   ![1573450765210](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155106.png)
 
    从70 开始，到 AOh 结束，所选中的都是 字符串的偏移量，通过这些偏移量我们才能找字符串，看一下上面第二个框，是 字符串的索引，可以看到他也是从70h 开始，大小是40h，也就是到A0h。在这段区域内保存的才是真正的字符串索引。我们可以看一下70h 第一个 92 01 00 00 ，他代表的偏移地址就是 0192h，接着我们找一下 0192h 
 
-   ![1573451393434](class%20%E5%92%8C%20dex.assets/1573451393434.png)
+   ![1573451393434](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155148.png)
 
    可以看到我一共选中了 8个字节，在这8个字节中我们可以用到的有6个，最开始的 06 则表示我们用到的个数，最后的 0 表示的是字符串结尾，下面我们把他们进行转换一下：
 
@@ -197,7 +197,7 @@ struct cp_info_constant_pool[0] 中的 u2，代表的是无符号数，u2 代表
 
    其他的都一样，我们也没有必要像上面遮这样找，其实我们可以直接在索引区找到对应的值。例如上面这个例子：
 
-   ![1573452803684](class%20%E5%92%8C%20dex.assets/1573452803684.png)
+   ![1573452803684](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155257.png)
 
    这里的数据是从 163开始的，是因为他并没有及时前面的 06 ，这个06至少代表后面要用到 6 个而已。
 
@@ -209,33 +209,33 @@ struct cp_info_constant_pool[0] 中的 u2，代表的是无符号数，u2 代表
 
 类型索引：
 
-![1573285833585](class%20%E5%92%8C%20dex.assets/1573285833585.png)
+![1573285833585](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155346.png)
 
 如 Hellow 类索引，Object 索引，String 索引的。这些都是我们所引用到的。
 
 方法原型索引 ：
 
-![1573285964548](class%20%E5%92%8C%20dex.assets/1573285964548.png)
+![1573285964548](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155415.png)
 
 字段索引：
 
-![字段索引](class%20%E5%92%8C%20dex.assets/1573286058416.png)
+![1573286058416](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155507.png)
 
 方法索引：
 
-![1573286081193](class%20%E5%92%8C%20dex.assets/1573286081193.png)
+![1573286081193](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155526.png)
 
 如上面的 main 方法 ，printStream 打印方法等。。他会记录当前类所引用的方法索引和继承的方法索引
 
 类索引：
 
-![1573286245923](class%20%E5%92%8C%20dex.assets/1573286245923.png)
+![1573286245923](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155600.png)
 
  整个dex 文件中所有类索引
 
 map 列表：
 
-![1573286901541](class%20%E5%92%8C%20dex.assets/1573286901541.png)
+![1573286901541](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155656.png)
 
 他是对整个头文件的一个校验
 
@@ -245,7 +245,7 @@ map 列表：
 
 最后看一下整个 dex 未必会的格式
 
-![1573286692820](class%20%E5%92%8C%20dex.assets/1573286692820.png)
+![1573286692820](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155743.png)
 
 ### Class 和 Dex 的区别
 
@@ -255,5 +255,5 @@ dex 将文件划分为了 三个区域，这三个区域存储了整个工程中
 
 本质上他们是一样的，dex 是从 class 文件演变而来的，但是 calss 中存在了许多沉余信息，dex 去掉了沉余信息，并进行了整合
 
-![1573287480420](class%20%E5%92%8C%20dex.assets/1573287480420.png)
+![1573287480420](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210604155801.png)
 
