@@ -105,7 +105,7 @@ class Box extends StatefulWidget {
 
 
 
-### Widget 和 Element 的关系
+### Widget 和 Element 的对应关系
 
 #### 
 
@@ -132,3 +132,105 @@ widget 的定义就是 `对一个 Element 配置的描述`，也就是说，widg
 在 Box 外部嵌套 Container 之后状态就没有了。这是因为 **判断 key 之前首先会判断类型是否一致，然后在判断 key 是否相同。**
 
 正因为类型不一致，所以之前的 State 状态都无法使用，所以就会重新创建一个新的。
+
+> 需要注意的是，继承自 StatelessWidget 的 Widget 是不需要使用 Key 的，因为它本身没有状态，不需要用到 Key。
+
+
+
+___
+
+键在具有相同父级的 [Element] 中必须是唯一的。相比之下，[GlobalKey] 在整个应用程序中必须是唯一的。另请参阅：[Widget.key]，其中讨论了小部件如何使用键。
+
+### LocalKey 的三种类型
+
+`LocalKey` 继承自 Key， 翻译过来就是局部键，`LocalKey` 在具有相同父级的 `Element` 中必须是惟一的。也就是说，LocalKey 在同一层级中必须要有唯一性。
+
+`LocalKey` 有三种子类型，下面我们来看一下:
+
+- `ValueKey` 
+
+  ```dart
+  class ValueKey<T> extends LocalKey {
+    final T value;
+    const ValueKey(this.value);
+  
+  
+    @override
+    bool operator ==(Object other) {
+      if (other.runtimeType != runtimeType)
+        return false;
+      return other is ValueKey<T>
+          && other.value == value;
+    }
+  }
+  
+  
+  ```
+
+  使用特定类型的值来标识自身的键，ValueKey 在最上面的例子中已经使用过了，他可以接收任何类型的一个对象来最为 key。
+
+  通过源码我们可以看到它重写了 == 运算符，**在判断是否相等的时候首先判断了类型是否相等，然后再去判断 value 是否相等**；
+
+- `ObjectKey`
+
+  ```dart
+  class ObjectKey extends LocalKey {
+    const ObjectKey(this.value);
+    final Object? value;
+  
+    @override
+    bool operator ==(Object other) {
+      if (other.runtimeType != runtimeType)
+        return false;
+      return other is ObjectKey
+          && identical(other.value, value);
+    }
+  
+    @override
+    int get hashCode => hashValues(runtimeType, identityHashCode(value));
+  }
+  ```
+
+  ObjectKey 和 ValueKey 最大的区别就是比较的算不一样，其中首先也是比较的类型，然后就调用 indentical 方法进行比较，其比较的就是内存地址，相当于 java 中直接使用 == 进行比较。而 LocalKey 则相当于 java 中的 equals 方法用来比较值的。
+
+  > 需要注意的是使用 ValueKey 中使用 == 比较的时候，如果没有重写 hashCode 和 == ，那样即使 对象的值是相等的，但比较出来也是不相等的。所以说尽量重写吧！
+
+- `UniqueKey`
+
+  ```dart
+  class UniqueKey extends LocalKey {
+    UniqueKey();
+  }
+  ```
+
+  很明显，从名字中可以看出来，这是一个独一无二的 key。
+
+  每次重新 build 的时候，UniqueKey 都是独一无二的，所以就会导致无法找到对应的 Element，状态就会丢失。那么在什么时候需要用到这个 UniqueKey呢？我们可以自行思考一下。
+
+  还有一种做法就是把 UniqueKey 定义在 build 的外面，这样就不会出现状态丢失的问题了。
+
+___
+
+
+
+### GlobalKey
+
+`GlobalKey` 继承自 Key，相比与 LocalKey，他的作用域是全局的，而 LocalKey 只作用于当前层级。
+
+在之前我们遇到一个问题，就是如果给一个 Widget 外面嵌套了一层，那么这个 Widget 的状态就会丢失，如下：
+
+```dart
+ children: <Widget>[
+    Box(Colors.red),
+    Box(Colors.blue),
+  ],
+  
+ ///修改为如下，然后重新 build
+  children: <Widget>[
+    Box(Colors.red),
+    Container(child:Box(Colors.blue)),
+  ],
+```
+
+原因在之前我们也讲过，就是因为类型不同。只有在类型和 key 相同的时候才会保留状态 ，显然上面的类型是不相同的；
+
