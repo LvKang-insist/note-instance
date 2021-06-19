@@ -477,3 +477,239 @@ BuildContext? get currentContext => _currentElement;
 通过这个 context 的 `findRenderObject ` 方法可以获取到 `RenderObject` ，这个  `RenderObject` 就是最终显示到屏幕上的东西，通过 `RenderObject` 我们可以获取到一一些数据，例如 widget 的宽高度，距离屏幕左上角的位置等等。
 
 > `RenderObject` 有很多种类型，例如 RenderBox 等，不同的 Widget 用到的可能并不相同，这里需要注意一点
+
+
+
+### 实例
+
+这个例子我们写一个小游戏，一个列表中有很多不同颜色的小方块，通过拖动这些方块来进行颜色的重排序。效果如下：
+
+<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210616225647.gif" alt="345" style="zoom:50%;" />
+
+通过点击按钮来打乱顺序，然后长按方框拖动进行重新排序；
+
+下面我们来写一下代码：
+
+```dart
+final boxes = [
+  Box(Colors.red[100], key: UniqueKey()),
+  Box(Colors.red[300], key: UniqueKey()),
+  Box(Colors.red[500], key: UniqueKey()),
+  Box(Colors.red[700], key: UniqueKey()),
+  Box(Colors.red[900], key: UniqueKey()),
+];
+
+  _shuffle() {
+    setState(() => boxes.shuffle());
+  }
+
+ @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
+      body: Center(
+        ///可重排序的列表
+        child: Container(
+          child: ReorderableListView(
+              onReorder: (int oldIndex, newIndex) {
+                if (newIndex > oldIndex) newIndex--;
+                final box = boxes.removeAt(oldIndex);
+                boxes.insert(newIndex, box);
+              },
+              children: boxes),
+          width: 60,
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _shuffle(),
+        child: Icon(Icons.refresh),
+      ),
+    );
+  }
+```
+
+ReorderableListView：可重排序的列表，支持拖动排序
+
+- onReorder：拖动后的回调，会给出新的 index 和 旧的 index，通过这两个参数就可以对位置就行修改，如上所示
+- scrollDirection：指定横向或者竖向
+
+还有一个需要注意的是 ReorderableListView 的 Item 必须需要一个 key，否则就会报错。
+
+```dart
+class Box extends StatelessWidget {
+  final Color color;
+
+  Box(this.color, {Key key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return UnconstrainedBox(
+      child: Container(
+        margin: EdgeInsets.all(5),
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+            color: color, borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+}
+```
+
+上面是列表中 item 的 widget，需要注意的是里面使用到了 UnconstrainedBox，因为在 ReorderableListView 中可能使用到了尺寸限制，导致在 item 中设置的宽高无法生效，所以使用了 UnconstrainedBox。
+
+体验了几次之后就发现了一些问题，
+
+- 比如拖动的时候只能是一维的，只能上下或者左右，
+- 拖动的时候是整个 item 拖动，并且会有一些阴影效果等，
+- 必须是长按才能拖动
+
+___
+
+
+
+因为 ReorderableListView  没有提供属性去修改上面的这些问题，所以我们可以自己实现一个类似的效果。如下：
+
+```dart
+class _MyHomePageState extends State<MyHomePage> {
+  final colors = [
+    Colors.red[100],
+    Colors.red[300],
+    Colors.red[500],
+    Colors.red[700],
+    Colors.red[900],
+  ];
+
+  _shuffle() {
+    setState(() => colors.shuffle());
+  }
+
+  int _slot;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
+      body: Listener(
+        onPointerMove: (event) {
+          //获取移动的位置
+          final x = event.position.dx;
+          //如果大于抬起位置的下一个，则互换
+          if (x > (_slot + 1) * Box.width) {
+            if (_slot == colors.length - 1) return;
+            setState(() {
+              final temp = colors[_slot];
+              colors[_slot] = colors[_slot + 1];
+              colors[_slot + 1] = temp;
+              _slot++;
+            });
+          } else if (x < _slot * Box.width) {
+            if (_slot == 0) return;
+            setState(() {
+              final temp = colors[_slot];
+              colors[_slot] = colors[_slot - 1];
+              colors[_slot - 1] = temp;
+              _slot--;
+            });
+          }
+        },
+        child: Stack(
+          children: List.generate(colors.length, (i) {
+            return Box(
+              colors[i],
+              x: i * Box.width,
+              y: 300,
+              onDrag: (Color color) => _slot = colors.indexOf(color),
+              key: ValueKey(colors[i]),
+            );
+          }),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _shuffle(),
+        child: Icon(Icons.refresh),
+      ),
+    );
+  }
+}
+
+class Box extends StatelessWidget {
+  final Color color;
+  final double x, y;
+  static final width = 50.0;
+  static final height = 50.0;
+  static final margin = 2;
+
+  final Function(Color) onDrag;
+
+  Box(this.color, {this.x, this.y, this.onDrag, Key key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedPositioned(
+      child: Draggable(
+        child: box(color),
+        feedback: box(color),
+        onDragStarted: () => onDrag(color),
+        childWhenDragging: box(Colors.transparent),
+      ),
+      duration: Duration(milliseconds: 100),
+      top: y,
+      left: x,
+    );
+  }
+
+  box(Color color) {
+    return Container(
+      width: width - margin * 2,
+      height: height - margin * 2,
+      decoration:
+          BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+    );
+  }
+}
+
+```
+
+
+
+可以看到上面我们将 `ReorderableListView ` 直接改成了 `Stack` , 这是因为在 Stack 中我们可以再 子元素中通过 `Positioned` 来自由的控制其位置。并且在 Stack 外面套了一层 Listener，这是用来监听移动的事件。
+
+接着我们看 Box，Box 就是可以移动的小方块。在最外层使用了 带动画的 `Positioned`，在  ` Positioned ` 的位置发生变化之后就会产生平移的动画效果。
+
+接着看一下 `Draggable `组件，`Draggable` 是一个可拖拽组件，常用的属性如下：
+
+- feedback：跟随拖拽的组件
+- childWhenDragging：拖拽时 chilid 子组件显示的样式
+- onDargStarted：第一次按下的回调
+
+上面的代码工作流程如下：
+
+1，当手指按住 `Box` 之后，计算  `Box` 的 index 。
+
+2，当手指开始移动时通过移动的位置和按下时的位置进行比较。
+
+3，如果大于，则 index 和 index +1 进行互换，小于则 index 和 index-1互换。
+
+4，进行判决处理，如果处于第一个或最后一个时直接 return。
+
+> 需要注意的是上面并没有使用 UniqueKey，因为 UniqueKey 是惟一的，在重新 build 的时候 因为 key 不相等，之前的状态就会丢失，导致 AnimatedPositioned  的动画无法执行，所以这里使用 ValueKey。这样就能保证不会出现状态丢失的问题。
+>
+> 当然也可以给每一个 Box 创建一个惟一的 UniqueKey  也可以。
+
+上面例子中执行效果如下：
+
+<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210619194608.gif" alt="345" style="zoom:50%;" />
+
+由于是 gif 图，所以就会显得比较卡顿。
+
+### 问题
+
+其实在上面最终完成的例子中，还是有一些问题，例如只能是横向的，如果是竖着的，就需要重新修改代码。
+
+并且 x 的坐标是从 0 开始计算的，如果在前面还有一些内容就会出现问题了。
+
