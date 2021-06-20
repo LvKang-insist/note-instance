@@ -107,7 +107,7 @@ class Box extends StatefulWidget {
 
 ### Widget 和 Element 的对应关系
 
-#### 
+
 
 widget 的定义就是 `对一个 Element 配置的描述`，也就是说，widget 只是一个配置的描述，并不是真正的渲染对象，就相当于是 Android 里面的 xml，只是描述了一下属性，但他并不是真正的 View。并且通过查看源码可知 widget 中有一个 createElement 方法，用来创建 Element。
 
@@ -711,5 +711,311 @@ class Box extends StatelessWidget {
 
 其实在上面最终完成的例子中，还是有一些问题，例如只能是横向的，如果是竖着的，就需要重新修改代码。
 
-并且 x 的坐标是从 0 开始计算的，如果在前面还有一些内容就会出现问题了。
+并且 x 的坐标是从 0 开始计算的，如果在前面还有一些内容就会出现问题了。例如如果是竖着的，在最上面有一个 appbar，则就会出现问题。
 
+修改代码如下所示：
+
+```dart
+class _MyHomePageState extends State<MyHomePage> {
+ ///...
+
+  int _slot;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
+      body: Listener(
+        onPointerMove: (event) {
+          //获取移动的位置
+          final y = event.position.dy;
+          //如果大于抬起位置的下一个，则互换
+          if (y > (_slot + 1) * Box.height) {
+            if (_slot == colors.length - 1) return;
+            setState(() {
+              final temp = colors[_slot];
+              colors[_slot] = colors[_slot + 1];
+              colors[_slot + 1] = temp;
+              _slot++;
+            });
+          } else if (y < _slot * Box.height) {
+            if (_slot == 0) return;
+            setState(() {
+              final temp = colors[_slot];
+              colors[_slot] = colors[_slot - 1];
+              colors[_slot - 1] = temp;
+              _slot--;
+            });
+          }
+        },
+        child: Stack(
+          children: List.generate(colors.length, (i) {
+            return Box(
+              colors[i],
+              x: 300,
+              y: i * Box.height,
+              onDrag: (Color color) => _slot = colors.indexOf(color),
+              key: ValueKey(colors[i]),
+            );
+          }),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _shuffle(),
+        child: Icon(Icons.refresh),
+      ),
+    );
+  }
+}
+```
+
+在上面代码中将原本横着的组件变成了竖着的，然后在拖动就会发现问题，如向上拖动的时候需要拖动两格才能移动，这就是因为y轴不是从0开始的，在最上面会有一个 appbar，我们没有将他的高度计算进去，所以就出现了这个问题。
+
+这个时候我们就可以使用 GlobalKey 来解决这个问题：
+
+```dart
+final _globalKey = GlobalKey();
+double _offset;
+
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(
+      title: Text(widget.title),
+    ),
+    body: Column(
+      children: [
+        SizedBox(height: 30),
+        Text("WelCome", style: TextStyle(fontSize: 28, color: Colors.black)),
+        SizedBox(height: 30),
+        Expanded(
+            child: Listener(
+          onPointerMove: (event) {
+            //获取移动的位置
+            final y = event.position.dy - _offset;
+            //如果大于抬起位置的下一个，则互换
+            if (y > (_slot + 1) * Box.height) {
+              if (_slot == colors.length - 1) return;
+              setState(() {
+                final temp = colors[_slot];
+                colors[_slot] = colors[_slot + 1];
+                colors[_slot + 1] = temp;
+                _slot++;
+              });
+            } else if (y < _slot * Box.height) {
+              if (_slot == 0) return;
+              setState(() {
+                final temp = colors[_slot];
+                colors[_slot] = colors[_slot - 1];
+                colors[_slot - 1] = temp;
+                _slot--;
+              });
+            }
+          },
+          child: Stack(
+            key: _globalKey,
+            children: List.generate(colors.length, (i) {
+              return Box(
+                colors[i],
+                x: 180,
+                y: i * Box.height,
+                onDrag: (Color color) {
+                  _slot = colors.indexOf(color);
+                  final renderBox = (_globalKey.currentContext
+                      .findRenderObject() as RenderBox);
+                  //获取距离顶部的距离
+                  _offset = renderBox.localToGlobal(Offset.zero).dy;
+                },
+                key: ValueKey(colors[i]),
+              );
+            }),
+          ),
+        ))
+      ],
+    ),
+    floatingActionButton: FloatingActionButton(
+      onPressed: () => _shuffle(),
+      child: Icon(Icons.refresh),
+    ),
+  );
+}
+```
+
+解决的思路非常简单，
+
+通过 GlobalKey 获取到当前 Stack 距离顶部的位置，然后用dy减去这个位置即可。最终效果如下：
+
+<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210620223806.gif" alt="345" style="zoom:33%;" />
+
+### 优化细节
+
+经过上面的操作，基本的功能都实现了，最后我们优化一下细节，如随机颜色，固定第一个颜色，添加游戏成功检测等。
+
+最终代码如下：
+
+```dart
+class _MyHomePageState extends State<MyHomePage> {
+  MaterialColor _color;
+
+  List<Color> _colors;
+
+  initState() {
+    super.initState();
+    _shuffle();
+  }
+
+  _shuffle() {
+    _color = Colors.primaries[Random().nextInt(Colors.primaries.length)];
+    _colors = List.generate(8, (index) => _color[(index + 1) * 100]);
+    setState(() => _colors.shuffle());
+  }
+
+  int _slot;
+
+  final _globalKey = GlobalKey();
+  double _offset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title), actions: [
+        IconButton(
+          onPressed: () => _shuffle(),
+          icon: Icon(Icons.refresh, color: Colors.white),
+        )
+      ]),
+      body: Column(
+        children: [
+          SizedBox(height: 30),
+          Text("WelCome", style: TextStyle(fontSize: 28, color: Colors.black)),
+          SizedBox(height: 30),
+          Container(
+            width: Box.width - Box.margin * 2,
+            height: Box.height - Box.margin * 2,
+            decoration: BoxDecoration(
+                color: _color[900], borderRadius: BorderRadius.circular(10)),
+            child: Icon(Icons.lock, color: Colors.white),
+          ),
+          SizedBox(height: Box.margin * 2.0),
+          Expanded(
+              child: Center(
+            child: Listener(
+              onPointerMove: event,
+              child: SizedBox(
+                width: Box.width,
+                child: Stack(
+                  key: _globalKey,
+                  children: List.generate(_colors.length, (i) {
+                    return Box(
+                      _colors[i],
+                      y: i * Box.height,
+                      onDrag: (Color color) {
+                        _slot = _colors.indexOf(color);
+                        final renderBox = (_globalKey.currentContext
+                            .findRenderObject() as RenderBox);
+                        //获取距离顶部的距离
+                        _offset = renderBox.localToGlobal(Offset.zero).dy;
+                      },
+                      onEnd: _checkWinCondition,
+                    );
+                  }),
+                ),
+              ),
+            ),
+          ))
+        ],
+      ),
+    );
+  }
+
+  _checkWinCondition() {
+    List<double> lum = _colors.map((e) => e.computeLuminance()).toList();
+    bool success = true;
+    for (int i = 0; i < lum.length - 1; i++) {
+      if (lum[i] > lum[i + 1]) {
+        success = false;
+        break;
+      }
+    }
+    print(success ? "成功" : "");
+  }
+
+  event(event) {
+    //获取移动的位置
+    final y = event.position.dy - _offset;
+    //如果大于抬起位置的下一个，则互换
+    if (y > (_slot + 1) * Box.height) {
+      if (_slot == _colors.length - 1) return;
+      setState(() {
+        final temp = _colors[_slot];
+        _colors[_slot] = _colors[_slot + 1];
+        _colors[_slot + 1] = temp;
+        _slot++;
+      });
+    } else if (y < _slot * Box.height) {
+      if (_slot == 0) return;
+      setState(() {
+        final temp = _colors[_slot];
+        _colors[_slot] = _colors[_slot - 1];
+        _colors[_slot - 1] = temp;
+        _slot--;
+      });
+    }
+  }
+}
+
+class Box extends StatelessWidget {
+  final double x, y;
+  final Color color;
+  static final width = 200.0;
+  static final height = 50.0;
+  static final margin = 2;
+
+  final Function(Color) onDrag;
+  final Function onEnd;
+
+  Box(this.color, {this.x, this.y, this.onDrag, this.onEnd})
+      : super(key: ValueKey(color));
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedPositioned(
+      child: Draggable(
+        child: box(color),
+        feedback: box(color),
+        onDragStarted: () => onDrag(color),
+        onDragEnd: (drag) => onEnd(),
+        childWhenDragging: box(Colors.transparent),
+      ),
+      duration: Duration(milliseconds: 100),
+      top: y,
+      left: x,
+    );
+  }
+
+  box(Color color) {
+    return Container(
+      width: width - margin * 2,
+      height: height - margin * 2,
+      decoration:
+          BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+    );
+  }
+}
+```
+
+最终效果如下：
+
+<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210620231803.gif" alt="345" style="zoom:33%;" />
+
+___
+
+### 参考文献
+
+> B站王叔不秃视频
+>
+> Flutter 实战
+
+> 如果本文有帮助到你的地方，不胜荣幸，如有文章中有错误和疑问，欢迎大家提出!
