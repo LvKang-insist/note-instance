@@ -50,7 +50,7 @@ Row(
 
 <img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210608151911.png" alt="image-20210608151911182" style="zoom:33%;" />
 
-可以看到上图中蓝色的数字时三，而红色的是 5，接着修改代码，将蓝色和红色的位置互换，然后热更新一下，如下：
+可以看到上图中蓝色的数字时三，而红色的是 5，接着修改代码，将蓝色和红色的位置互换，然后热重载一下，如下：
 
 ```dart
  Row(
@@ -101,7 +101,7 @@ class Box extends StatefulWidget {
 )
 ```
 
-在代码中添加了 key，然后就会发现已经没有上面的问题了。但是如果我们给 Box 在包裹一层 Container，然后在次热更新的时候，数字都变成了 0，在去掉 Container 后数字也会变成 0，具体的原因我们在后面说；
+在代码中添加了 key，然后就会发现已经没有上面的问题了。但是如果我们给 Box 在包裹一层 Container，然后在次热重载的时候，数字都变成了 0，在去掉 Container 后数字也会变成 0，具体的原因我们在后面说；
 
 
 
