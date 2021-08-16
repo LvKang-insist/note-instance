@@ -1,6 +1,6 @@
 ### 概述
 
-CustomScrollView：一个滚动的容器，改组件不接受任何 child，但是你可以直接提供 `Slivers` 已创建各种滚动效果，例如页面中有多个可滑动的列表，如 Appbar， 列表，网格，等这种就可以直接使用 `SliverAppBar`,`SliverList` 和 `SliverGrid`
+CustomScrollView：一个滚动的容器，改组件不接受任何 child，但是你可以直接提供 `Slivers` 已创建各种滚动效果，**例如页面中有多个可滑动的列表，如 Appbar， 列表，网格**，等这种就可以直接使用 `SliverAppBar`,`SliverList` 和 `SliverGrid`
 
 Slivers 不是单独指一个组件，而是指的一个系列，所以以 Sliver 开头的组件都是这个系列的，但是他们都只能作用于 `CustomScrollView` 中。
 
@@ -184,7 +184,7 @@ ___
 
 #### SliverAppbar
 
-在 slivers 系列中，SliverAppbar 可以说是使用频率比较高的组件了，因为他实现了很多的特殊效果，下面我们来看一下
+在 slivers 系列中，SliverAppbar 可以说是使用频率比较高的组件了，SliverAppbar 为应用栏提供了自定义滚动行为，下面我们来看一下
 
 ```dart
 class _MyHomePageState extends State<MyHomePage> {
@@ -306,3 +306,283 @@ SliverFillRemaining(
 
 <img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210810174859.png" alt="image-20210810174859170" style="zoom:33%;" />
 
+### 案例
+
+首先看一下实现的效果(由于是 gif 图，所以看起来有一点卡)：
+
+
+
+<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210813165416.gif" alt="345" style="zoom:33%;" />
+
+
+
+- 准备数据
+
+  接口来源于网络，仅供学习使用
+
+  ```
+  https://h5.48.cn/resource/jsonp/allmembers.php?gid=10
+  ```
+
+  对应的数据类：
+
+  ```dart
+  class Member {
+    final String id;
+    final String name;
+    final String team;
+    final String sid;
+    final String gid;
+    final String gname;
+    final String sname;
+    final String fname;
+    final String tname;
+    final String pid;
+    final String pname;
+    final String nickname;
+    final String company;
+    final String join_day;
+    final String height;
+    final String birth_day;
+    final String star_sign_12;
+    final String star_sign_48;
+    final String speciality;
+    final String hobby;
+    final String experience;
+    final String catch_phrase;
+    final String status;
+    final String ranking;
+    final String tcolor;
+    final String gcolor;
+  
+    String get avatarUrl => "https://www.snh48.com/images/member/zp_$id.jpg";
+  
+    Member(
+      this.id,
+      this.name,
+     //.....自行添加
+    );
+  
+    @override
+    String toString() {
+      return "$id  ---  $name";
+    }
+  }
+  ```
+
+- 首页
+
+  ```dart
+  class _DemoWidgetState extends State<DemoWidget> {
+    List<Member> _member = [];
+  
+    @override
+    Widget build(BuildContext context) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text("案例"),
+        ),
+        body: RefreshIndicator(
+          onRefresh: () async {
+            setState(() => _member.clear());
+            final url = "https://h5.48.cn/resource/jsonp/allmembers.php?gid=10";
+            final res = await http.get(Uri.parse(url));
+            if (res.statusCode != 200) throw Error();
+  
+            final json = convert.jsonDecode(res.body);
+            final members = (json["rows"] as List)
+                .map((e) => Member(
+                      e['sid'], e["sname"],e["tname"], e["sid"], e["gid"],e["gname"],e["sname"],e["fname"],e["tname"],
+                      e["pid"],e["pname"], e["nickname"], e["company"], e["join_day"], e["height"],    e["birth_day"],
+                      e["star_sign_12"], e["star_sign_48"], e["speciality"], e["hobby"], e["experience"],
+                      e["catch_phrase"],  e["status"], e["ranking"], e["tcolor"],e["gcolor"],
+                    ))
+                .toList();
+  
+            setState(() => _member = members);
+          },
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(),
+              SliverPersistentHeader(
+                  delegate: _MyDelegate("SII", Color(0xffae86bb)), pinned: true),
+              _buildTeamList("SII"),
+              SliverPersistentHeader(
+                  delegate: _MyDelegate("NII", Color(0xff91cdeb)), pinned: true),
+              _buildTeamList("NII"),
+              SliverPersistentHeader(
+                  delegate: _MyDelegate("HII", Color(0xffa7b0ba)), pinned: true),
+              _buildTeamList("HII"),
+              SliverPersistentHeader(
+                  delegate: _MyDelegate("预备生", Color(0xff91cdeb)), pinned: true),
+              _buildTeamList("预备生"),
+              SliverPersistentHeader(
+                  delegate: _MyDelegate("荣誉毕业生", Color(0xff8ed2f5)),
+                  pinned: true),
+              _buildTeamList("荣誉毕业生"),
+              SliverPersistentHeader(
+                  delegate: _MyDelegate("S预备生", Color(0xff38b26d)), pinned: true),
+              _buildTeamList("S预备生"),
+              SliverPersistentHeader(
+                  delegate: _MyDelegate("X", Color(0xffa7b0ba)), pinned: true),
+              _buildTeamList("X"),
+            ],
+          ),
+        ),
+      );
+    }
+  
+    SliverGrid _buildTeamList(String teamName) {
+      //进行筛选
+      final teamMember =
+          _member.where((element) => element.team == teamName).toList();
+      return SliverGrid(
+        delegate: SliverChildBuilderDelegate((context, index) {
+          Member m = teamMember[index];
+          return InkWell(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                //动画
+                Hero(
+                    tag: m.avatarUrl,
+                    child: ClipOval(
+                      child: CircleAvatar(
+                        child: Image.network(m.avatarUrl),
+                        backgroundColor: Colors.white,
+                      ),
+                    )),
+                Text("${m.name}"),
+              ],
+            ),
+            onTap: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => DetailPage(m))),
+          );
+        }, childCount: teamMember.length),
+        gridDelegate:
+            SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 120),
+      );
+    }
+  }
+  
+  
+  class _MyDelegate extends SliverPersistentHeaderDelegate {
+    final String title;
+    final Color color;
+  
+    _MyDelegate(this.title, this.color);
+  
+    @override
+    Widget build(
+        BuildContext context, double shrinkOffset, bool overlapsContent) {
+      return Container(
+        height: 35,
+        child: FittedBox(child: Text(title, style: TextStyle())),
+        color: color,
+      );
+    }
+  
+    ///最高高度
+    @override
+    double get maxExtent => 35;
+  
+    ///最新高度
+    @override
+    double get minExtent => 35;
+  
+    ///重绘
+    @override
+    bool shouldRebuild(covariant _MyDelegate oldDelegate) {
+      //如果 title 不相等，则重绘
+      return oldDelegate.title != title;
+    }
+  }
+  
+  ```
+
+  上面代码在  refresh 中进行了网络请求，然后进行解析数据，最后进行了刷新操作
+
+  上面代码都很简单，不太熟悉的可能就是 `SliverPersistentHeader` 了，这是一个可以置顶的 header，它可以出现在视图的任何一个位置， `pinned` 和 `floating` 属性用来控制收起是是否展示，具体意思和 SliverAppbar 中一样。
+
+- 详情页面
+
+  ```dart
+  class DetailPage extends StatelessWidget {
+    final Member member;
+  
+    DetailPage(this.member);
+  
+    @override
+    Widget build(BuildContext context) {
+      return Scaffold(
+          body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+              expandedHeight: 300,
+              pinned: true,
+              stretch: true,
+              flexibleSpace: FlexibleSpaceBar(
+                centerTitle: true,
+                title: Text("${member.name}"),
+                background: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(100),
+                    //长宽比
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                       // 和上面那个页面的动画对应，tag 必须一致
+                      child: Hero(
+                        tag: member.avatarUrl,
+                        child: Material(
+                          elevation: 4.0,
+                          shape: CircleBorder(),
+                          child: ClipOval(
+                            child: Image.network(
+                              member.avatarUrl,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )),
+          SliverList(
+              delegate: SliverChildListDelegate(
+            [
+              _buildInfo("战队：", member.team),
+              _buildInfo("公司：", member.company),
+              _buildInfo("时间：", member.join_day),
+              _buildInfo("身高：", member.height),
+              _buildInfo("生日：", member.birth_day),
+              _buildInfo("星座：", member.star_sign_12),
+              _buildInfo("运势：", member.star_sign_48),
+              _buildInfo("爱好：", member.speciality),
+              _buildInfo("签名：", member.catch_phrase),
+            ],
+          ))
+        ],
+      ));
+    }
+  
+    _buildInfo(String label, String content) {
+      return Card(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 25),
+          child: Row(
+            children: [Text(label), Text(content)],
+          ),
+        ),
+      );
+    }
+  }
+  ```
+
+  上面代码中有一个问题，本来使用了  `stretch` 属性之后，在下拉的时候应该会有一个放大的效果，但是运行代码的时候并没有，有知道原因的同学可以讲一下
+
+____
+
+> 参考：B站王叔不秃
+
+> 如果本文有帮助到你的地方，不胜荣幸，如有文章中有错误和疑问，欢迎大家提出!
