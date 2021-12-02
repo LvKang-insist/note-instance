@@ -181,7 +181,7 @@ RenderObjectToWidgetElement<T> attachToRenderTree(BuildOwner owner, [ RenderObje
 
 该方法负责创建根 element，即 `RenderObjectToWidgetElement` ，并且将 element 与 widget 进行关联，即创建出 widget 树对应的 element 树。
 
-如果 element 创建过了，则将根 element 中关联的 widget 设为新的，由此可以看出 element 只会创建一次，后面会进行复用。那么 BuildOwner 是什么呢？，其实他就是 widget framework 的管理类，它跟踪哪些 widget 需要重新构建。
+如果 element 创建过了，则将根 element 中关联的 widget 设为新的，由此可以看出 element 只会创建一次，后面会进行复用。那么 BuildOwner 是什么呢？，**其实他就是 widget framework 的管理类，它跟踪哪些 widget 需要重新构建。**
 
 组件树在构建完毕后，回到 runApp 的实现中，当调完 `attachRootWidget` 后，最后一行会调用 `WidgetsFlutterBainding` 实例的 `scheduleWarmUpFrame()` 方法，该方法的是现在 SchedulerBinding 中，他被调用后会立即进行一次绘制，在此次绘制结束前，该方法就会锁定事件分发，也就是说在本次绘制结束完成之前 Flutter 不会响应各种事件，这可以保证在绘制过程中不会触发新的重绘。
 
@@ -364,9 +364,220 @@ void drawFrame() {
   .....//省略无关
   try {
     if (renderViewElement != null)
-      buildOwner!.buildScope(renderViewElement!);
+      buildOwner!.buildScope(renderViewElement!); // 1.重新构建widget树
     super.drawFrame();
     buildOwner!.finalizeTree();
   } 
 }
 ```
+
+最终的调用如下：
+
+```dart
+void drawFrame() {
+  assert(renderView != null);
+  pipelineOwner.flushLayout(); // 2.更新布局
+  pipelineOwner.flushCompositingBits();//3.更新“层合成”信息
+  pipelineOwner.flushPaint(); // 4.重绘
+  if (sendFramesToEngine) {
+    renderView.compositeFrame(); // 5. 上屏，会将绘制出的bit数据发送给GPU
+	...../////
+  }
+}
+```
+
+可以到上面代码主要做了五件事：
+
+1，重新构建 widget 树(buildScope())
+
+2，更新布局(flushLayout())
+
+3，更新"层合成"信息(flushCompositingBits())
+
+4，重绘(flushPaint())
+
+5，上屏：将绘制的产物显示在屏幕上
+
+上面的五部我们称为 rendering pipline ，中文翻译为 “渲染流水线” 或者 “渲染管线”，而这五个步骤便是重中之重。下面我们以 setState 的更新流程为例先对整个更新流程有一个比较深的印象。
+
+
+
+### setState 执行流
+
+```dart
+void setState(VoidCallback fn) {
+  assert(fn != null);
+  //执行 callback，返回值不能是 future  
+  final Object? result = fn() as dynamic;
+  assert(() {
+    if (result is Future) {
+      throw ...//
+    }
+  }());
+  _element!.markNeedsBuild();
+}
+```
+
+```dart
+void markNeedsBuild() {
+  ....//
+  //标注该 element 需要重建
+  _dirty = true;
+  owner!.scheduleBuildFor(this);
+}
+```
+
+```dart
+void scheduleBuildFor(Element element) {
+ //注释1   
+ if (!_scheduledFlushDirtyElements && onBuildScheduled != null) {
+     _scheduledFlushDirtyElements = true;
+     onBuildScheduled!();
+  }    
+  //注释2
+  _dirtyElements.add(element);
+  element._inDirtyList = true;
+}
+```
+
+当调用 setState 后：
+
+1，首先调用 markNeedsBuild 方法，将 `element` 的 dirty 标记为 true，表示需要重建
+
+2，接着调用 scheduleBuildFor ，将当前的 element 添加到  _dirtyElements 列表中(注释2)
+
+下面我们着重看一下 注释1的代码，
+
+首先判断 _scheduledFlushDirtyElements 如果为 false，该字段值初始值默认就是 false，接着判断 onBuildScheduled 不为 null，其实 onBuildScheduled  在 WidgetBinding初始化的时候就已经创建了，所以他是不会为 null 的。
+
+当条件成立后，就会直接执行 onBuildScheduled 回调。我们跟踪一下：
+
+```dart
+mixin WidgetsBinding on BindingBase, ServicesBinding, SchedulerBinding, GestureBinding, RendererBinding, SemanticsBinding {
+  @override
+  void initInstances() {
+    super.initInstances();
+    ...///  
+    buildOwner!.onBuildScheduled = _handleBuildScheduled
+  }
+```
+
+```dart
+void _handleBuildScheduled() {
+  ...///
+  ensureVisualUpdate();
+}
+```
+
+根据上面代码我们可以知道 onBuildScheduled 确实是在 WidgetsBinding 的初始化方法中进行初始化的。并且他的实现中调用了 ensureVisualUpdate 方法，我们继续跟进一下：
+
+```dart
+void ensureVisualUpdate() {
+  switch (schedulerPhase) {
+    case SchedulerPhase.idle:
+    case SchedulerPhase.postFrameCallbacks:
+      scheduleFrame();
+      return;
+    case SchedulerPhase.transientCallbacks:
+    case SchedulerPhase.midFrameMicrotasks:
+    case SchedulerPhase.persistentCallbacks:
+      return;
+  }
+}
+```
+
+上面代码中，判断了 schedulerPhase 的状态，如果是 idle 和 postFrameCallbacks 状态的时候，就开始调用 scheduleFrame。
+
+> 对于上面每种状态所代表的意义，在文章上面已经说过了，这里就不在赘述。值得一提的是，在每次 frame 流程完成的时候，在 finally 代码块中将状态又改为了 idle 。这也侧面说明如果你频繁的 setState 的时候，如果上次的渲染流程没有完成，则不会发起新的渲染。
+
+接着继续看 scheduleFrame：
+
+```dart
+void scheduleFrame() {
+  //判断流程是否已经开始了
+  if (_hasScheduledFrame || !framesEnabled)
+    return;
+  // 注释1
+  ensureFrameCallbacksRegistered();
+  // 注释2
+  window.scheduleFrame();
+  _hasScheduledFrame = true;
+}
+```
+
+注释1：注册 onBeginFrame 和 onDrawFrame ，这两个函数类型的字段在上面的 "渲染管线中已经说过了"。
+
+注释2：flutter framework 想 Flutter Engine 发起一个请求，接着 Flutter 引擎会在合适的时机去调用 onBeginFrame 和 onDrawFrame。这个时机可以认为是屏幕下一次刷新之前，具体取决于 Flutter 引擎实现。
+
+**到此，setState 中最核心的就是触发了一个 请求**，在下一次屏幕刷新的时候就会回调  onBeginFrame，执行完成之后才会调用 onDrawFrame 方法。
+
+___
+
+```dart
+void handleBeginFrame(Duration? rawTimeStamp) {
+  ...///
+  assert(schedulerPhase == SchedulerPhase.idle);
+  _hasScheduledFrame = false;
+  try {
+    Timeline.startSync('Animate', arguments: timelineArgumentsIndicatingLandmarkEvent);
+    //将生命周期改为 transientCallbacks，表示正在执行一些临时任务的回调
+    _schedulerPhase = SchedulerPhase.transientCallbacks;
+    final Map<int, _FrameCallbackEntry> callbacks = _transientCallbacks;
+    _transientCallbacks = <int, _FrameCallbackEntry>{};
+    callbacks.forEach((int id, _FrameCallbackEntry callbackEntry) {
+      if (!_removedIds.contains(id))
+        _invokeFrameCallback(callbackEntry.callback, _currentFrameTimeStamp!, callbackEntry.debugStack);
+    });
+    _removedIds.clear();
+  } finally {
+    _schedulerPhase = SchedulerPhase.midFrameMicrotasks;
+  }
+}
+```
+
+上面代码主要是执行了_transientCallbacks 的回调方法。执行完成后将生命周期改为了 midFrameMicrotasks。
+
+接下来就是执行 handlerDrawFrame 方法了。该方法在上面已经分析过了，已经知道它最终就会走到 drawFrame 方法中。
+
+```dart
+# WidgetsBindign.drawFrame()
+void drawFrame() { 
+.....//省略无关
+  try {
+    if (renderViewElement != null)
+      buildOwner!.buildScope(renderViewElement!); // 1.重新构建widget树
+    super.drawFrame();
+    buildOwner!.finalizeTree();
+  } 
+}
+# RendererBinding.drawFrame()
+void drawFrame() {
+  assert(renderView != null);
+  pipelineOwner.flushLayout(); // 2.更新布局
+  pipelineOwner.flushCompositingBits();//3.更新“层合成”信息
+  pipelineOwner.flushPaint(); // 4.重绘
+  if (sendFramesToEngine) {
+    renderView.compositeFrame(); // 5. 上屏，会将绘制出的bit数据发送给GPU
+	...../////
+  }
+}
+```
+
+以上，便是 setState 调用的大概过程，实际的流程会更加复杂一点，例如在这个过程中不允许再次调用 setState，还有在 frame 中会涉及到动画的调度，以及如何进行布局更新，重绘等。通过上面的分析，我们需要对整个流程有一个比较深的印象。
+
+至于上面 drawFrame 中的绘制流程，我们放在下一篇文章中介绍。
+
+___
+
+### 推荐阅读
+
+- [一文搞懂 BuildContext](https://juejin.cn/post/6991734742672474119#heading-0)
+- [Key 的原理和使用](https://juejin.cn/post/6976069994270588941)
+- [Flutter 三棵树的构建流程分析](https://juejin.cn/post/7031858186567188511#heading-13)
+
+### 参考资料
+
+- https://blog.csdn.net/shuimu157926xiao/article/details/118040747
+- Flutter 中文网
+
+> 如果本文有帮助到你的地方，不胜荣幸，如有文章中有错误和疑问，欢迎大家提出
