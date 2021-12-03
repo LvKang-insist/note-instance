@@ -591,6 +591,8 @@ RenderObjectElement? _findAncestorRenderObjectElement() {
 
 - #### MultiChildRenderObjectElement
 
+  上面代码遍历创建子组件，inflateWidget 方法里面创建完成后，接着会调用子组件的 mount 方法，-
+  
   ```dart
   @override
   void insertRenderObjectChild(RenderObject child, IndexedSlot<Element?> slot) {
@@ -602,7 +604,7 @@ RenderObjectElement? _findAncestorRenderObjectElement() {
   ```
 
   上面代码中，找到 renderObject 之后赋值给了 `ContainerRenderObjectMixin<RenderObject, ContainerParentDataMixin<RenderObject>>` 这个类，我们来看一下这个类
-
+  
   ```dart
   /// Generic mixin for render objects with a list of children.
   /// 具有子项列表的渲染对象的通用混合
@@ -616,7 +618,7 @@ RenderObjectElement? _findAncestorRenderObjectElement() {
   > 泛型 mixin 用于渲染一组子对象的对象。看到这里我们可以知道 MultiChildRenderObjectElement 是可以有子列表的。
 
   通过上面的注释可以看出一个重点，双向链表。所以 `MultiChildRenderObjectElement` 的子节点通过双向链表连接。上面 insert 最终会调用到 `_insertIntoChildList ` 方法中，如下：
-
+  
   ```dart
   ChildType? _firstChild;
   ChildType? _lastChild;
@@ -661,7 +663,7 @@ RenderObjectElement? _findAncestorRenderObjectElement() {
   根据上面的注释我们可以将其分为三部分，1，在 after 为 null 的时候将 child 插入到第一个节点，2，将 child 插入到 末端，3，将 child 插入到中间。
 
   我们以一个例子为例：
-
+  
   ```dart
   Column(
   	children: [
@@ -676,7 +678,7 @@ RenderObjectElement? _findAncestorRenderObjectElement() {
   第一个 Stack 向上找到 Column( RenderObjectElement ) 之后， 调用这个方法，目前 after 为 null，则 _firstchild 就是 SizedBox( SizedBox 对应的 renderObject 是 `RenderConstrainedBox`)
 
   第二个是 Text，我们知道 Text 是组合类型的，所以他不会被挂载到 树中，通过查询源码可以看出最终的 text 用的是 `RichText`。RichText 向上查找到 Column( RenderObjectElement ) 之后 ，调用这个方法，传入了两个参数，第一个 child 是 RichText 对应的 `RenderParagraph` ，第二个 after 是 SizedBox 对应的 `RenderConstrainedBox` 。依照上面逻辑，执行下面的代码
-
+  
   ```dart
   final ParentDataType afterParentData = after.parentData! as ParentDataType;
   if (afterParentData.nextSibling == null) {
@@ -689,7 +691,7 @@ RenderObjectElement? _findAncestorRenderObjectElement() {
   ```
 
   将 child 的 `childParentData.previousSibling` 指向第一个节点，将第一个接的的  `afterParentData.nextSibling` 指向 child，最后让 _lastchild 执行 child。
-
+  
   后面也是如此，当流程结束后就可以得到一个 `RenderTree`。
 
 ### 总结
