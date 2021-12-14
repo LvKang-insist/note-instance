@@ -129,7 +129,7 @@ ___
 
 首先我们定义组件，与单子组件不同的是，多子组件需要继承自 `MultiChildRenderObjectWidget` ：
 
-```
+```dart
 class LeftRightBox extends MultiChildRenderObjectWidget {
   LeftRightBox({Key key, @required List<Widget> list})
       : assert(list.length == 2, "只能传两个 child"),
@@ -166,10 +166,9 @@ class RenderLeftRight extends RenderBox
     //获取第一个组件，和他父组件传的约束
     RenderBox leftChild = firstChild;
     LeftRightParentData childParentData =
-        leftChild.parent as LeftRightParentData;
+        leftChild.parentData as LeftRightParentData;
     //获取下一个组件
-    //至于这里为什么可以获取到下一个组件，是因为在 多子组件的 mount 中，遍历创建所有的 child 然后将其插入到到 child 的 childParentData 中
-    //这里需要对 renderObject 的构建流程有一个了解，https://juejin.cn/post/7031858186567188511#heading-11  
+    //至于这里为什么可以获取到下一个组件，是因为在 多子组件的 mount 中，遍历创建所有的 child 然后将其插入到到 child 的 childParentData 中了
     RenderBox rightChild = childParentData.nextSibling;
 
     //限制右孩子宽度不超过总宽度的一半
@@ -211,4 +210,151 @@ class RenderLeftRight extends RenderBox
     return defaultHitTestChildren(result, position: position);
   }
 }
+
 ```
+
+使用如下：
+
+```dart
+ Container(
+  child: LeftRightBox(
+    list: [
+      Text("左"),
+      Text("右"),
+    ],
+  ),
+),
+```
+
+![image-20211209155013117](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20211209155013.png)
+
+我们对上面流程进行一个简单分析：
+
+1，获取当前组件的约束信息
+
+2，获取两个子组件
+
+3，对两个子组件进行layout，并且右组件的宽度不能超过总宽度的一半，设置又组件的偏移为最右边。接着对左组件进行布局，左子组件的宽度为总宽度-右子组件的宽度，并且没有设置偏移，默认偏移为0
+
+4，设置当前组件自身的大小，高度为子组件的 max。
+
+可以看到，实际布局流程和单子组件没太大区别，只不过多子组件需要对多个组件进行布局。
+
+l另外和 `RenderCustomCenter` 不同的是，RenderLeftRight 是直接继承了 `RenderBox`，同时混入了 `ContainerRenderObjectMixin ` 和 `RenderBoxContainerDefaultsMixin ` 两个 mixin ，这两个 mixin 中帮我们实现了磨人的绘制和事件处理的相关逻辑。
+
+
+
+### 布局更新
+
+理论上，当某个组件的布局发生变化之后，会影响到其他的组件布局，所以当有组件布局发生改变之后，最笨的办法就是对整棵组件树进行重新布局。但是对所有的组件进行 `reLayout` 的成本还是比较大，所以我们需要探索一下降低 `reLayout` 成本的方案，事实上，在一些特定的场景下，组件发生变化之后只需要对特定的组件进行重新布局即可，无需对整棵树进行 `reLayout`  。
+
+#### 布局边界
+
+<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20211214113606.png" alt="image-20211214113606334" style="zoom:33%;" />
+
+假如有一个页面的组件树结构如上所示：
+
+假如 Text3 的文本长度发生变化，就会导致 Text4 的位置发生变化，相应的 Column2 的高度也会发生变化。又因为 SizedBox 的宽高已经固定。所以最终需要 reLayout 的组件是：Text3，Colum2，这里需要注意的是：
+
+1. Text4 是不需要进行重新布局的，因为 Text4 的大小没有发生变化，只是位置发生了变化，而它的位置是在父组件 Colum2 布局时确定的。
+2. 很容易发现：假如 Text3 和 Column2 之间还有其他组件，则这些组件也都是需要 reLayout 的。
+
+在本例中，Column2 就是 Text3 的 relayoutBoundary(重新布局的边界点)。每个组件的 renderObject 中都有一个 `_relayoutBoundary` 属性指向自身布局，如果当前节点布局发生变化后，自身到 `_relayoutBoundary` 路径上的所有节点都需要 reLayout。
+
+那么一个组件的是否是 relayoutBoundary 的条件是什么呢？ 这里有一个原则和四个场景，原则是 "组件自身的大小变化不会影响父组件"，如果一个组件满足下面四种情况之一，则它便是 relayoutBoundary：
+
+1. 当前组件的父组件大小不依赖当前组件大小时；这种情况下父组件在布局时会调用子组件布局函数时并会给子组件传递一个 parentUserSize 参数，该参数为 false 是表示父组件的布局算法不会依赖子组件的大小。
+2. 组件大小只取决于父组件传递的约束，而不会依赖后代组件的大小。这样的话后代组件的大小变化就不会影响到自身的大小了，这种情况组件的 sizedByParent 属性必须为 true。
+3. 父组件传递给自身的约束是一个严格约束(固定宽高)；这种情况下即使自身大小依赖后代元素，但也不会影响父组件。
+4. 组件Wie根组件；Fluuter 应用的根组件是 RenderView ，他的默认大小是当前设备屏幕的大小。
+
+对应实现的代码是：
+
+```dart
+if (!parentUsesSize || sizedByParent || constraints.isTight || parent is! RenderObject) {
+  _relayoutBoundary = this;
+} else {
+  _relayoutBoundary = (parent! as RenderObject)._relayoutBoundary;
+}
+```
+
+代码中的 if 的判断条件和上面的四条一一对应，其中除了第二个条件之外(sizeByParent 为 true)，其他的都很直观。第二个条件在后面会讲到。
+
+#### markNeedsLayout
+
+当布局发生变化的时候，他需要调用 markNeedsLayout  方法来更新布局，它的主要功能有两个：
+
+1，将自身到其 relayoutBoundary 路径上的所有节点标记为"需要布局"
+
+2，其请求新的 frame；在新的 frame 中会对标记为 "需要布局" 的节点重新布局
+
+```dart
+void markNeedsLayout() {
+  //如果当前组件不是布局边界节点  
+  if (_relayoutBoundary != this) {
+    //递归标记将当前节点到布局边界节点  
+    markParentNeedsLayout();
+  } else {
+    //如果是布局边界节点  
+    _needsLayout = true;
+    if (owner != null) {
+      //将布局边界节点加入到 piplineOwner._nodesNeedingLayout 列表中  
+      owner!._nodesNeedingLayout.add(this);
+      //改函数最终会请求新的 frame  
+      owner!.requestVisualUpdate();
+    }
+  }
+}
+```
+
+#### flushLayout
+
+markNeedsLayout 执行完成后，就会将其 relayoutBoundary 添加到 piplineOwner._nodesNeedingLayout 列表中，然后请求新的 frame。
+
+当新的 frame 到来时，就会执行 piplineOwner.drawFrame 方法：
+
+```dart
+void drawFrame() {
+  assert(renderView != null);
+  pipelineOwner.flushLayout();
+  pipelineOwner.flushCompositingBits();
+  pipelineOwner.flushPaint();
+  ...///
+}
+```
+
+flushLayout 中会对之前添加到 _nodesNeedingLayout 中的节点进行重新布局，如下：
+
+```dart
+void flushLayout() {
+    while (_nodesNeedingLayout.isNotEmpty) {
+      final List<RenderObject> dirtyNodes = _nodesNeedingLayout;
+      _nodesNeedingLayout = <RenderObject>[];
+      //安装节点在树中的深度从小到大排序后在重新 layout  
+      for (final RenderObject node in dirtyNodes..sort((RenderObject a, RenderObject b) => a.depth - b.depth)) {
+        if (node._needsLayout && node.owner == this)
+          //重新布局  
+          node._layoutWithoutResize();
+      }
+    }
+}
+```
+
+看一下  _layoutwithoutResize() 的实现
+
+```dart
+void _layoutWithoutResize() {
+  try {
+    //递归重新布局  
+    performLayout();
+    markNeedsSemanticsUpdate();
+  } catch (e, stack) {
+    _debugReportException('performLayout', e, stack);
+  }
+  _needsLayout = false;
+  //布局更新后，更新UI  
+  markNeedsPaint();
+}
+```
+
+到此布局更新完成。
