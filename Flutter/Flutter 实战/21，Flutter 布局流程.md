@@ -358,3 +358,249 @@ void _layoutWithoutResize() {
 ```
 
 到此布局更新完成。
+
+#### Layout流程
+
+如果组件有子组件，则需要在 performLayout 中调用子组件的 layout 先对子组件进行布局，如下：
+
+```dart
+void layout(Constraints constraints, { bool parentUsesSize = false }) {
+  RenderObject? relayoutBoundary;
+  
+  //先确定当前布局边界  
+  if (!parentUsesSize || sizedByParent || constraints.isTight || parent is! RenderObject) {
+    relayoutBoundary = this;
+  } else {
+    relayoutBoundary = (parent! as RenderObject)._relayoutBoundary;
+  }
+  // _neessLayout  标记当前组件是否被标记为需要布局
+  // _constraints 是上次布局时父组件传递给当前组件的约束
+  // _relayoutBoundary 为上次布局时当前组件的布局边界 
+  // 所以，当当前组件没有被标记为需要布局，且父组件传递的约束没有发生变化
+  // 和布局边界也没有发生变化时则不需要重新布局，直接返回即可  
+  if (!_needsLayout && constraints == _constraints && relayoutBoundary == _relayoutBoundary) {
+	....///
+    return;
+  }
+  // 如果需要布局，缓存约束和布局边界  
+  _constraints = constraints;
+  _relayoutBoundary = relayoutBoundary;
+  assert(!_debugMutationsLocked);
+  assert(!_doingThisLayoutWithCallback);
+  assert(() {
+    _debugMutationsLocked = true;
+    if (debugPrintLayouts)
+      debugPrint('Laying out (${sizedByParent ? "with separate resize" : "with resize allowed"}) $this');
+    return true;
+  }());
+  
+  // 后面解释
+  if (sizedByParent) {
+     performResize();
+  }
+
+  // 执行布局
+  performLayout();
+
+   //布局结束后将 _needsLayotu 置位 false
+  _needsLayout = false;
+  
+  // 将当前组件标记为重绘，因为布局发生变化后，需要重新绘制
+  markNeedsPaint();
+}
+```
+
+简单的讲一下布局的过程：
+
+1. 确定当前组件的布局边界
+2. 判断是否需要重新布局，如果没有必要会直接返回，反之才需要重新布局。不需要布局时需要满足三个条件
+   - 单签组件没有被标记为需要重新布局。
+   - 父组件传递的约束没有发生变化。
+   - 当前组件布局边界也没有发生变化时。
+3. 调用 performLayout 进行布局，因为 performLayout 中又会调用子组件的 layout 方法，所以这是一个递归的过程，递归结束后整个组件的布局也就完成了。
+4. 请求重绘
+
+#### sizedByParent
+
+在 layout 方法中，有以下逻辑：
+
+```dart
+  if (sizedByParent) {
+     performResize();
+  }
+```
+
+上面我们说过，sizeByParent 为 true 是表示：当前组件的大小值取决于父组件传递的约束，而不会依赖后组件的大小。前面我们说过，performLayout 中确定当前组件大小时通常会依赖子组件的大小，如果 `sizedByParent` 为 true，则当前组件大小就不会依赖于子组件的大小。
+
+为了清晰逻辑，Flutter 框架中约定，当 sizedByParent 为 true 时，确定当前组件大小的逻辑应该抽离到 performResize() 中，这种情况下 performLayout 主要任务便只有两个：对子组件进行布局和确定子组件在当前组件中的偏移。
+
+下面通过一个 AccurateSizedBox 示例来演示一下 sizebyParent 为 true 时我们应该如何布局：
+
+##### AccurateSizeBox
+
+Flutter 中的 SizeBox 会将其父组件的约束传递给其子组件，这也就意味着，如果父组件限制了最新的宽度为 100，即使我们通过 SizeBox 指定宽度为 50 也是没有用的。
+
+因为 SizeBox 中的实现会让 SizedBox 的子组件先满足 SizeBox 父组件的约束。例如：
+
+```dart
+ AppBar(
+    title: Text(title),
+    actions: <Widget>[
+      SizedBox( // 使用SizedBox定制loading 宽高
+        width: 20, 
+        height: 20,
+        child: CircularProgressIndicator(
+          strokeWidth: 3,
+          valueColor: AlwaysStoppedAnimation(Colors.white70),
+        ),
+      )
+    ],
+ )
+```
+
+实际结果还是 progress 的高度为 appbar 的高度。
+
+通过查看 SizedBox 源码，如下所示：
+
+```dart
+@override
+void performLayout() {
+  final BoxConstraints constraints = this.constraints;
+  if (child != null) {
+    child!.layout(_additionalConstraints.enforce(constraints), parentUsesSize: true);
+    size = child!.size;
+  } else {
+    size = _additionalConstraints.enforce(constraints).constrain(Size.zero);
+  }
+}
+//返回尊重给定约束同时尽可能接近原始约束的新框约束
+BoxConstraints enforce(BoxConstraints constraints) {
+    return BoxConstraints(
+        // clamp ：根据数字返回一个介于低和高之间的值
+        minWidth: minWidth.clamp(constraints.minWidth, constraints.maxWidth),
+        maxWidth: maxWidth.clamp(constraints.minWidth, constraints.maxWidth),
+        minHeight: minHeight.clamp(constraints.minHeight, constraints.maxHeight),
+        maxHeight: maxHeight.clamp(constraints.minHeight, constraints.maxHeight),
+    );
+}
+```
+
+可以发现，之所以不生效，是应为父组件限制了最小高度，SizeBox 中的子组件会先满足父组件的约束。当然，我们也可以通过使用 UnconstrainedBox + SizedBox 来实现我们想要的效果，但是这里我们希望使用一个布局搞定，为此我们自定义一个 AccurateSizeBox 组件。
+
+它和 SizedBox 主要的区别就是 AccurateSizedBox 自身会遵守其父组件传递的约束，而不是让子组件去满足 AccureateSizeBox 父组件的约束，具体：
+
+1. AccurateSizedBox 自身大小只取决于父组件的约束和自身的宽高。
+2. AccurateSizedBox 确定自身大小后，限制其子组件的大小。
+
+```dart
+class AccurateSizedBox extends SingleChildRenderObjectWidget {
+  const AccurateSizedBox(
+      {Key key, this.width = 0, this.height = 0, @required Widget child})
+      : super(key: key, child: child);
+
+  final double width;
+  final double height;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return RenderAccurateSizeBox(width, height);
+  }
+
+  @override
+  void updateRenderObject(
+      BuildContext context, covariant RenderAccurateSizeBox renderObject) {
+    renderObject
+      ..width = width
+      ..height = height;
+  }
+}
+
+class RenderAccurateSizeBox extends RenderProxyBoxWithHitTestBehavior {
+  RenderAccurateSizeBox(this.width, this.height);
+
+  double width;
+  double height;
+
+  //当前组件的大小只取决于父组件传递的约束
+  @override
+  bool get sizedByParent => true;
+    
+  // performResize 中会调用
+  @override
+  Size computeDryLayout(BoxConstraints constraints) {
+    //设置当前元素的宽高，遵守父组件的约束
+    return constraints.constrain(Size(width, height));
+  }  
+
+  @override
+  void performLayout() {
+    child.layout(
+        BoxConstraints.tight(
+            Size(min(size.width, width), min(size.height, height))),
+        //父容器是固定大小，子元素大小改变时不影响父元素
+        //parentUserSize 为 false时，子组件的布局边界会是他自身，子组件布局发生变化后不会影响当前组件
+        parentUsesSize: false);
+  }
+}
+```
+
+上面代码有三点需要注意：
+
+1. 我们的 RenderAccurateSizedBox 不在继承自 RenderBox，而是继承 `RenderProxyBoxWithHitTestBehavior` ，`RenderProxyBoxWithHitTestBehavior` 是间接继承自 `RenderBox` 的，它里面包含了默认的命中测试和绘制相关逻辑，继承它以后则不需要我们手动实现了。
+
+2. 我们将确定当前组件大小的逻辑挪到了 `computeDryLayout` 方法中，因为 RenderBox 的 performResize 方法会调用 computeDryLayout，并将返回结果作为当前组件大小。
+
+   按照 Flutter 框架约定，我们应该重写 computeDryLayout 方法，而不是 performResize 方法。就行我们在布局时应该重写 performLayout 方法而不是 layout 方法；不过，这只是一个约定，并非强制，但我们应该尽可能遵守这个约定，除非你清楚的知道自己在干什么并且能确保之后维护你代码的人也清楚。
+
+3. RenderAccurateSizedBox 在调用子组件 layout 时，将 `parentUserSize` 置为 false，这样的话子组件就会变成一个布局边界。
+
+测试如下：
+
+```dart
+class AccurateSizedBoxRoute extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final child = GestureDetector(
+      onTap: () => print("tap"),
+      child: Container(width: 300, height: 30, color: Colors.red),
+    );
+    return Row(
+      children: [
+        ConstrainedBox(
+          //限制高度为 100x100
+          constraints: BoxConstraints.tight(Size(100, 100)),
+          child: SizedBox(
+            width: 50,
+            height: 50,
+            child: child,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: ConstrainedBox(
+            constraints: BoxConstraints.tight(Size(100, 100)),
+            child: AccurateSizedBox(width: 50, height: 50, child: child),
+          ),
+        )
+      ],
+    );
+  }
+}
+```
+
+![image-20211215183103420](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20211215183103.png)
+
+结果如上所示，当父组件宽高是 100 时，我们通过 SizedBox 指定 Container 大小是 50x50 是不能成功的。而通过 AccurateSizedBox 时成功了。
+
+> 需要注意的是，如果一个组件的 sizeByParent 为 true，那它在布局子组件的时候也是能将 `parentUserSize` 的，sizeByParent 为 true 表示自己是布局边界。
+>
+> 而将 `parentUsesSize` 置为 true 或者 false 决定的是子组件是否是布局边界，两者并不相矛盾，这一点不能混淆。
+>
+> 另外，在 Flutter 自带的 OverflowBox 组件中，他的 sizeByParent 为 true，在调用子组件 layout 时，parentUsesSize 也是 true，详情可查看 OverflowBox 的源码
+
+
+
+#### AfterLayout
+
+AfterLayout 可以在布局结束后拿到子组件的代理渲染对象(RenderAfterLayout)，RenderAfterLayout 对象会代理子组件渲染对象，因此，通过 RenderAfterLayout 对象也就可以获取到子组件渲染对象的属性，例如大小，位置等。
+

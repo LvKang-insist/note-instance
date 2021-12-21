@@ -282,6 +282,7 @@ abstract class ComponentElement extends Element {
 
   @override
   void mount(Element? parent, Object? newSlot) {
+    super.mount(parent, newSlot);
     _firstBuild();
   }
 
