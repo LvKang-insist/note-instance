@@ -1,12 +1,12 @@
 ### Flutter 布局过程
 
-Layout(布局)过程朱啊哟是确定每一个组件的信息(大小和位置)，Flutter 中的布局过程如下：
+Layout(布局)过程中是确定每一个组件的信息(大小和位置)，Flutter 中的布局过程如下：
 
 1，父节点向子节点传递约束信息，限制子节点的最大和最小宽高。
 
 2，子节点根据自己的约束信息来确定自己的大小（Szie）。
 
-3，父节点根据特定的规则（不同的组件会有不同的布局算法）确定每一个子节点在父节点空间中的位置，用便宜 offset 中，
+3，父节点根据特定的规则（不同的组件会有不同的布局算法）确定每一个子节点在父节点空间中的位置，用偏移 offset表示。
 
 4，递归整个过程，确定出每一个节点的位置和大小。
 
@@ -600,7 +600,86 @@ class AccurateSizedBoxRoute extends StatelessWidget {
 
 
 
-#### AfterLayout
+#### Constraints
 
-AfterLayout 可以在布局结束后拿到子组件的代理渲染对象(RenderAfterLayout)，RenderAfterLayout 对象会代理子组件渲染对象，因此，通过 RenderAfterLayout 对象也就可以获取到子组件渲染对象的属性，例如大小，位置等。
+Constraints(约束)主要描述了最小和最大宽高的限制，理解组件在布局过程中如何根据约束确定自身或子节点的大小对我们理解组件的布局行为有很大的帮助。
 
+我们通过一个 200*200 的 Container 的例子来说明，为了排除干扰，我们让根节点(RenderView) 作为 Container 的父组件，代码如下：
+
+```dart
+Container(width: 200, height: 200, color: Colors.red)
+```
+
+运行之后，就会发现整个屏幕都为红色，为什么呢，我们看看 RenderView 的实现：
+
+```dart
+@override
+void performLayout() {
+  //configurateion.sieze 为当前设备的屏幕
+  _size = configuration.size;
+  assert(_size.isFinite);
+  if (child != null)
+    child!.layout(BoxConstraints.tight(_size));//强制子组件和屏幕一样大
+}
+```
+
+这里需要介绍一下两种常用的约束：
+
+1. 宽松约束：不限制最小宽高(为 0)，只限制最大宽高，可以通过 `BoxConstraints.loose(Size size)` 来快速创建。
+2. 严格约束：限制为固定大小，即最小宽度等于最大宽度，最小高度等于最大高度，可以通过 `BoxConstraints.thght(Size)` 来快速创建。
+
+可以发现，RenderView 中给子组件传递的是一个严格的约束，即强制子组件等于屏幕大小，所以 Container 便撑满了屏幕。
+
+那么我们如何才能让指定的大小生效呢，答案就是 “引入一个中间组件，让中间组件遵守父组件的约束，然后对子组件传递新的约束”。对于这个例子来说，最简单的办法就是使用一个 `Align` 组件来包裹 `Container`:
+
+```dart
+@override
+Widget build(BuildContext context) {
+  var container = Container(width: 200, height: 200, color: Colors.red);
+  return Align(
+    child: container,
+    alignment: Alignment.topLeft,
+  );
+}
+```
+
+Align 会遵守 RenderView 的约束，让自身撑满屏幕，然后会给子组件一个宽松的约束(最小宽度为 0，最大宽度为 200)，这样 Container 就可以变成 200*200 了。
+
+当然我们也可以使用其他组件来代替 Align，例如 `UnconstrainedBox`，但原理是相同的。具体可查看源码进行验证。
+
+例如 Align 的布局过程如下：
+
+```dart
+void performLayout() {
+  final BoxConstraints constraints = this.constraints;
+  final bool shrinkWrapWidth = _widthFactor != null || constraints.maxWidth == double.infinity;
+  final bool shrinkWrapHeight = _heightFactor != null || constraints.maxHeight == double.infinity;
+
+  if (child != null) {
+    //子组件采用宽松约束，并且设置子组件不是布局边界(表示子组件改变后当前组件也需要重新刷新)
+    child!.layout(constraints.loosen(), parentUsesSize: true);
+    size = constraints.constrain(Size(
+      shrinkWrapWidth ? child!.size.width * (_widthFactor ?? 1.0) : double.infinity,
+      shrinkWrapHeight ? child!.size.height * (_heightFactor ?? 1.0) : double.infinity,
+    ));
+    alignChild();
+  } else {
+    size = constraints.constrain(Size(
+      shrinkWrapWidth ? 0.0 : double.infinity,
+      shrinkWrapHeight ? 0.0 : double.infinity,
+    ));
+  }
+}
+```
+
+### 总结
+
+到这里我们已经对 flutter 布局流程比较熟悉了，现在我们看一张官网的图：
+
+<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220105112857.png" alt="image-20220105112857377" style="zoom:50%;" />
+
+
+
+> 在进行布局的时候，Flutter 会以 DFS(深度优先遍历) 的方式遍历渲染树，并限制自上而下的方式从父节点传递给子节点。子节点如果需要确定自身的大小，则必须遵守父节点传递的限制。子节点的响应方式是在父节点建立的约束内将大小以自上而下的方式传递给父节点。
+
+是不是理解的更透彻了一些

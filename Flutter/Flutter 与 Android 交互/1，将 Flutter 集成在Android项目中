@@ -1,0 +1,146 @@
+使用 Flutter 已经有一段时间了，开发体验还是非常好的，但是一般我们在正式使用 Flutter 的时候很少会去创建一个纯 Flutter 项目，而是需要在之前的项目中已集成的方式来编写 Flutter。这篇文章将以 如何在 Android 项目中集成 Flutter 和 如何在两者之间进行交互为主要内容。
+
+
+
+### 在 Android 项目中集成 Flutter 项目
+
+首先我们需要找一个 android 项目，以这个为基础来集成 Fluuter。下面来看一下具体的步骤
+
+1. 创建 flutter 模块
+
+   在 AndroidStudio 的 Terminal 中使用如下命令
+
+   ```tex
+   flutter create -t module flutter_module
+   ```
+
+   其中 my_flutter 为模块名称。该命令完成后将会在项目目录中产生一个新的文件夹 `flutter_module`
+
+   或者直接使用 AS 创建一个 Flutter Module也行。
+
+2. 将 两个项目放在一个文件夹下面
+
+   这一步主要是为了方便管理，并且可以分开上传到 git，方便开发等。
+
+   不在一个目录下也行。
+
+3. 执行 `flutter build aar`
+
+   打开 Flutter 模块，执行 `flutter build aar` 命令。执行完后显示如下：
+
+   <img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220113183440.png" alt="image-20220113183440084" style="zoom:50%;" />
+
+4. 完成上面截图中的四项
+
+   上面截图中的四个项目都需要在 android 代码中完成
+
+   ```groovy
+   repositories {
+      //...	
+       maven { url 'D:\\android\\project\\example\\flutter_module\\build\\host\\outputs\\repo' }
+       maven { url "https://storage.googleapis.com/download.flutter.io" }
+   }
+   ```
+
+   新项目的 repositories 都需要配置在 `setting.gradle` 中。
+
+   上面中的 url 就是 fluuter_modlue 的路径了。
+
+   ```groovy
+   dependencies {
+   	//.....	
+       debugImplementation 'com.lv.example.flutter_module:flutter_debug:1.0'
+       profileImplementation 'com.lv.example.flutter_module:flutter_profile:1.0'
+       releaseImplementation 'com.lv.example.flutter_module:flutter_release:1.0'
+   }
+   ```
+
+   ```groovy
+   buildTypes {
+       profile {
+           initWith debug
+       }
+       release {
+           minifyEnabled false
+           proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+       }
+   }
+   ```
+
+5. 同步项目
+
+   同步一下项目，看有没有报错，如果有排查一下问题
+
+6. 添加 FlutterActivity
+
+   在 `AdnroidManifest.xml` 中添加 `FlutterActivity`
+
+   ```xml
+   <activity
+       android:name="io.flutter.embedding.android.FlutterActivity" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+       android:hardwareAccelerated="true"
+       android:windowSoftInputMode="adjustResize" />
+   ```
+
+7. 跳转
+
+   ```kotlin
+   class MainActivity : AppCompatActivity() {
+       override fun onCreate(savedInstanceState: Bundle?) {
+           super.onCreate(savedInstanceState)
+           setContentView(R.layout.activity_main)
+   
+   
+           findViewById<View>(R.id.start).setOnClickListener {
+               startActivity(
+                   FlutterActivity.createDefaultIntent(this)
+               )
+           }
+       }
+   }
+   ```
+
+8. 效果如下
+
+   <img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220113185158.gif" alt="345" style="zoom:50%;" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
