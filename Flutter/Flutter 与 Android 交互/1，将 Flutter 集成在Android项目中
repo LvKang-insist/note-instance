@@ -104,43 +104,610 @@
 
    <img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220113185158.gif" alt="345" style="zoom:50%;" />
 
+___
+
+### Flutter 和 Android 的交互
+
+#### Android 调起 Flutter 页面
+
+在上面的代码中已经有打开 flutter 页面的代码了，如下所示：
+
+```kotlin
+startActivity(FlutterActivity.createDefaultIntent(this))
+```
+
+不过你运行代码，就会发现这种方式启动会非常慢，下面来看一种预初始化 Flutter 的方式
+
+```kotlin
+class MainActivity : AppCompatActivity() {
+    private val flutterEngine by lazy { initFlutterEngine() };
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+ 	   ...//
+        findViewById<View>(R.id.start).setOnClickListener {
+            startActivity(
+                FlutterActivity.withCachedEngine("default_engine_id").build(this)
+            )
+        }
+    }
+
+    private fun initFlutterEngine(): FlutterEngine {
+        //创建 Flutter 引擎
+        val flutterEngine = FlutterEngine(this)
+        //指定要跳转的flutter页面
+        flutterEngine.navigationChannel.setInitialRoute("main")
+        flutterEngine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
+        //这里做一个缓存，可以在适当的时候执行它，例如app里，在跳转前执行预加载
+        val flutterEngineCache = FlutterEngineCache.getInstance();
+        flutterEngineCache.put("default_engine_id", flutterEngine)
+        //上面代码一般在跳转之前调用，这样可以使得跳转树的加快
+        return flutterEngine
+    }
+    
+    override fun onDestroy() {
+       super.onDestroy()
+       flutterEngine.destroy()
+    }
+}
+```
+
+Flutter 代码如下：
+
+```dart
+void main() => runApp(getRouter(window.defaultRouteName));
+
+Widget getRouter(String name) {
+  switch (name) {
+    case "main":
+      return const MyApp();
+    default:
+      return MaterialApp(
+        title: "Flutter Demo",
+        theme: ThemeData(
+          primarySwatch: Colors.blue,
+        ),
+        home: Container(
+          alignment: Alignment.center,
+          child: Text("not font page $name}"),
+        ),
+      );
+  }
+}		
+```
+
+效果如下所示：
+
+​		<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220113222850.gif" alt="345" style="zoom:50%;" />
+
+​		可以发现，跳转的速度明显加快了许多。
+
+> 需要注意的是，并不是修改了 `fluuter_model` 中的代码后重新运行 android 后页面就会发生改变，在 android 项目中，flutter 的代码是一个 aar 包的形式存在的，所以 flutter 代码更新后，需要重新执行 `flutter build  aar`  命令重新打一个aar 包才可以。
+>
+> 当然这并不是说每次都要这样操作，在正常开发过程中，直接运行 flutter_module 即可。等到需要合起来的时候执行该命令即可。
+
+> 当使用缓存的 FlutterEngine 时，FlutterEngine 比任何显示它的 FlutterActivity 或 FlutterFragment 的寿命都要长。请记住，Dart 代码在您预热 FlutterEngine 后立即开始执行，并在您的 FlutterActivity/FlutterFragment 销毁后继续执行。要停止执行并清除资源，请从 FlutterEngineCache 中获取 FlutterEngine 并使用 FlutterEngine.destroy() 销毁 FlutterEngine。
+
+>最后就是，如果要测试性能，请使用 release 版本
 
 
 
+##### 携参跳转 Flutter
+
+如果在跳转的时候需要携带参数，只需要在 route 后面拼接上参数即可，如下所示：
+
+```dart
+flutterEngine.navigationChannel.setInitialRoute("main?{\"name\":\"345\"}")
+```
+
+这里将路由和参数使用 `?` 隔开，参数使用 json 格式进行传递。
+
+在 Flutter 端通过 `window.defaultRouteName` 获取到的就是路由 + 参数了。我们只需要解析一下即可：
+
+```dart
+String url = window.defaultRouteName;
+// route名称
+String route =
+    url.indexOf('?') == -1 ? url : url.substring(0, url.indexOf('?'));
+// 参数Json字符串
+String paramsJson =
+    url.indexOf('?') == -1 ? '{}' : url.substring(url.indexOf('?') + 1);
+// 解析参数
+Map<String, dynamic> params = json.decode(paramsJson);
+```
+
+通过上面代码即可拿到跳转的参数
+
+##### 以透明的方式启动 FlutterActivity
+
+```dart
+startActivity(
+    FlutterActivity.withCachedEngine("default_engine_id")
+        .backgroundMode(FlutterActivityLaunchConfigs.BackgroundMode.transparent)
+        .build(this)
+)
+```
 
 
 
+##### 以半透明的方式启动 FlutterActivity
+
+1，需要一个主题属性，用于呈现半透明效果
+
+```xaml
+<style name="MyTheme" parent="@style/MyParentTheme">
+  <item name="android:windowIsTranslucent">true</item>
+</style>
+```
+
+2,将主题应用到 FlutterActivity 中
+
+```xml
+<activity
+  android:name="io.flutter.embedding.android.FlutterActivity"
+  android:theme="@style/MyTheme"
+  android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+  android:hardwareAccelerated="true"
+  android:windowSoftInputMode="adjustResize"
+  />
+```
+
+这样 FlutterActivity 即可支持半透明
+
+#### Android 嵌入 FlutterFragment
+
+在 Android 页面中显示一个 FlutterFragment，基础操作如下：
+
+```kotlin
+class MainActivity : AppCompatActivity() {
+    //定义一个标记字符串来表示其中的FlutterFragment 活动的FragmentManager。这个值可以是你想要的任何值。
+    private val tagFlutterFragment = "flutter_fragment"
+    private var flutterFragment: FlutterFragment? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        val flutterEngine = initFlutterEngine()
+        findViewById<View>(R.id.start).setOnClickListener {
+            //尝试找到现有的FlutterFragment，以防这不是第一次运行onCreate()
+            flutterFragment =
+                supportFragmentManager.findFragmentByTag(tagFlutterFragment) as 			FlutterFragment?
+            //创建 FlutterFragment
+            if (flutterFragment == null) flutterFragment =
+                FlutterFragment
+                    .withCachedEngine("default_engine_id")
+                    .build()
+            //加载 FlutterFragment
+            supportFragmentManager
+                .beginTransaction()
+                .add(R.id.layout, flutterFragment!!, tagFlutterFragment)
+                .commit()
+        }
+    }
+
+    private fun initFlutterEngine(): FlutterEngine {
+        //创建 Flutter 引擎
+        val flutterEngine = FlutterEngine(this)
+        //指定要跳转的flutter页面
+        flutterEngine.navigationChannel.setInitialRoute("main")
+        flutterEngine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
+        //这里做一个缓存，可以在适当的时候执行它，例如app里，在跳转前执行预加载
+        val flutterEngineCache = FlutterEngineCache.getInstance();
+        flutterEngineCache.put("default_engine_id", flutterEngine)
+        //上面代码一般在跳转之前调用，这样可以使得跳转树的加快
+        return flutterEngine
+    }
+
+    override fun onPostResume() {
+        super.onPostResume()
+        flutterFragment?.onPostResume()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        flutterFragment?.onNewIntent(intent)
+    }
+
+    override fun onBackPressed() {
+        super.onBackPressed()
+        flutterFragment?.onBackPressed()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        flutterFragment?.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        flutterFragment?.onUserLeaveHint()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        flutterFragment?.onTrimMemory(level)
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        flutterEngine.destroy()
+    }
+}
+```
+
+上面代码直接是已初始化引擎的方式打开 FlutterFragmetn 的，这样的好处是加载更加块。
+
+需要注意的是，如果要实现 Flutter 所有预期的行为，必须将这些信号转发到 FlutterFragment 中，这也就是上面为什么重新这么多方法的原因了。
 
 
 
+##### 从指定的入口点运行 FlutterFragment
+
+与不同的初始路由类似，不同的`flutterfragment`可能希望执行不同的Dart入口点。在一个典型的Flutter应用程序中，只有一个Dart入口点:main()，但你可以定义其他入口点。
+
+FlutterFragment 支持为给定的Flutter体验执行所需Dart入口点的规格。要指定一个入口点，请构建FlutterFragment，如下所示:
+
+```dart
+FlutterFragment.withNewEngine()
+    .dartEntrypoint("newMain")
+    .build()
+```
+
+FlutterFragment 会启动一个名字为 `newMian` 的入口点。
+
+flutter 端的配置如下所示：
+
+```dart
+void main() => runApp(MyApp(window.defaultRouteName));
+
+void newMain() => runApp(NewMainApp());
+```
+
+> 需要注意的是，必须配置在 main.dart 文件中。
+
+> 当 FlutterFragment 使用缓存时， Dart 入口点属性无效，所以指定入口后无法使用缓存。
 
 
 
+##### 控制 FlutterFragment 的渲染模式
+
+Flutter 可以使用 `SufaceView` 来渲染他的内容，也可以使用 `TextureView` 。
+
+FlutterFragment  默认使用 `SurfaceView`。它的新能明显高于 `TextureView`，但是 `SufaceView` 不能再 Android View 层次结构中交叉，`SurfaceView ` 必须是最下面的视图，或者是最上面的视图。
+
+此外，在 Android N 之前的版本中，`SurfaceView` 不能使用动画，因为他们的布局渲染和 View 的层次结构的其他部分不同。
+
+那么您需要使用 TextureView 而不是 SurfaceView。通过使用 RenderMode 构建 FlutterFragment 来选择 TextureView，如下所示：
+
+```kotlin
+val flutterFragment = FlutterFragment.withCachedEngine("my_engine_id")
+    .renderMode(FlutterView.RenderMode.texture)
+    .build()
+```
+
+##### 具有透明度的 FlutterFragment
+
+默认情况下，FlutterFragment 使用 SurfaceView 呈现不透明背景。 对于任何不是由 Flutter 绘制的像素，该背景都是黑色的。出于性能原因，使用不透明背景渲染是首选渲染模式。在 Android 上具有透明度的 Flutter 渲染会对性能产生负面影响。但是，有许多设计需要在 Flutter 体验中显示透明像素，这些像素会显示到底层 Android UI。因此，Flutter 在 FlutterFragment 中支持半透明
+
+> SurfaceView 和 TextureView 都支持透明度。但是，当 SurfaceView 被指示以透明方式呈现时，它会将自己定位在比所有其他 Android 视图更高的 z-index 上，这意味着它会出现在所有其他视图之上。这是 SurfaceView 的限制。如果在所有其他内容之上渲染您的 Flutter 体验是可以接受的，那么 FlutterFragment 的表面默认 RenderMode 就是您应该使用的 RenderMode。但是，如果您需要在 Flutter 体验的上方和下方显示 Android 视图，则必须指定的 RenderMode.texture。有
+
+使用方式如下：
+
+```kotlin
+FlutterFragment flutterFragment = FlutterFragment.withCachedEngine("my_engine_id")
+    .transparencyMode(FlutterView.TransparencyMode.transparent)
+    .build();
+```
 
 
 
+##### FlutterFragment及其Activity之间的关系
+
+有些应用选择使用Fragments作为整个Android屏幕。在这些应用中，用Fragment来控制系统chrome是合理的，比如Android的状态栏、导航栏和方向。
+
+在其他应用程序中，片段仅用于表示 UI 的一部分。 FlutterFragment 可用于实现抽屉、视频播放器或单张卡片的内部。在这些情况下，FlutterFragment 影响 Android 的系统 chrome 是不合适的，因为在同一个 Window 中还有其他 UI 片段。
+
+FlutterFragment 带有一个概念，可以帮助区分 FlutterFragment 应该能够控制其宿主 Activity 的情况，以及 FlutterFragment 应该只影响其自身行为的情况。为了防止 FlutterFragment 将其 Activity 暴露给 Flutter 插件，并防止 Flutter 控制 Activity 的系统 UI，请使用 FlutterFragment 的 Builder 中的 shouldAttachEngineToActivity() 方法，如下所示：
+
+```java
+FlutterFragment flutterFragment = FlutterFragment.withCachedEngine("my_engine_id")
+    //此FlutterFragment是否应自动附加其Activity作为其FlutterEngine的控制面。
+    .shouldAttachEngineToActivity(false)
+    .build();
+```
+
+#### Flutter 和 Android 通信
+
+在进行通信之前先介绍一下 `Platform Channel` ，他是 Flutter 和原生通信的工具，有三种类型：
+
+- `BaseicMessageChannel`：用于传递字符串和半结构化信息，Flutter 和平台端进行消息数据交换时可以以使用。
+- `MethodChannel` ：用于传递方法调用(method invocation)，Flutter 和平台端进行直接方法调用时候可以使用
+- `EventChannel` ：用户数据流 (event stream) 的通信，Flutter 和平台端的事件监听，取消等都可以使用
+
+在日常开发中最常用的也就是 `MethodChannel` 了，关于其他的两种可自行查阅网上的文章
+
+##### Android 调用 Flutter 方法
+
+```dart
+val methodChannel =
+    MethodChannel(flutterEngine.dartExecutor, "com.example.AndroidWithFlutter/native")
+```
+
+上面代码中定义了一个 `MtthodChannel` ，第一个参数是一个接口，是与 Flutter 进行通信的工具，第二个参数是 `name`，就是 channel 的名称（这个名称需要和 Flutter 中定义的一致）。
+
+```kotlin
+//调用 Flutter 方法
+methodChannel.invokeMethod("flutterMethod","调用 Flutter 参数",object : MethodChannel.Result {
+	override fun success(result: Any?) {
+		Log.e("---345--->", "$result");
+	}
+
+	override fun error(errorCode: String?, errorMessage: String?, errorDetails: Any?) {
+		Log.e("---345--->", "调用Flutter失败");
+	}
+
+	override fun notImplemented() {}
+	})
+}
+```
+
+上面代码中调用了 Flutter 中名字为 `flutterMethod` 的方法，其中第一个参数为方法名字，第二个是参数，回调中是调用结果和是否调用成功。下面我们看一下 Flutter 中如何定义：
+
+```dart
+final _channel = const MethodChannel("com.example.AndroidWithFlutter/native");
+@override
+void initState() {
+  super.initState();
+  ///监听android端的调用
+  _channel.setMethodCallHandler((call) async {
+    switch (call.method) {
+      case "flutterMethod":
+        print("参数：${call.arguments}");
+        break;
+    }
+    return "我是 Flutter 返回值";
+  });
+}
+
+```
+
+上面代码中监听 android 端的调用，接着根据方法名字判断是哪个方法即可。
+
+> 需要注意的是，在调用 Flutter 的时候，即使没有打开页面，也能调用其方法，这是应为已经缓存过 flutterEngine 了，flutterEngine 中会直接执行 dart 代码，所以可以直接调用。但是如果在页面跳转的时候没有使用缓存。这个时候虽然显示调用成功了，但是跳转过去是拿不到对应的参数的，因为没有使用缓存，不是同一个对象，所以不行，这里需要注意一下。
+
+##### Flutter 调用 Android 方法
+
+flutter端代码：
+
+```dart
+void _incrementCounter() {
+  //调用 Android 的 AndroidMethod 方法
+  var result = _channel.invokeMapMethod("AndroidMethod", "调用 Android 参数");
+  result.then((value) => print('Android 返回值 :$value'));
+}
+```
+
+android 端代码：
+
+```dart
+methodChannel.setMethodCallHandler { call, result ->
+    when (call.method) {
+        "AndroidMethod" -> {
+            result.success(mapOf("Android 返回值" to "\"我是Android\""))
+        }
+        else -> {
+            result.success("我是Android,没招到对应方法")
+        }
+    }
+}
+```
+
+这里需要注意的就是 flutter 调用 android 的时候限制了返回值必须为 map，这点需要注意一下；
+
+#### Flutter 跳转 Android 页面
+
+flutter 跳转 android 页面实际上使用的是 `MethodChannel` ，需要跳转的时候，flutter 调用一下 android，在 android 端执行跳转的逻辑即可，如下所示：
+
+flutter 端代码：
+
+```
+void _incrementCounter() { 
+  //打开原生页面
+  _channel.invokeMapMethod("jumpToNative");
+}
+```
+
+android 端代码：
+
+```dart
+//监听flutter调用 android
+methodChannel.setMethodCallHandler { call, result ->
+    when (call.method) {
+        "AndroidMethod" -> {
+            result.success(mapOf("Android 返回值" to "\"我是Android\""))
+        }
+        "jumpToNative" -> {
+            //跳转登录页面
+            startActivity(Intent(this, LoginActivity::class.java))
+        }
+        else -> {
+            result.success("我是Android,没招到对应方法")
+        }
+    }
+}
+```
+
+效果图如下所示：
+
+<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117123711.gif" alt="345" style="zoom:33%;" />
+
+#### 页面返回传参的实现
+
+实现方式和上面的差不多，也是借助 `MethodChannel` ，在页面返回的时候使用 channel 调用一下传入对应的参数即可。
 
 
 
+### 内存使用情况
 
+我们对项目使用 flutter 之后和未使用的时候做了一个内存观测，具体如下：
 
+未引入 flutter module：
 
+![image-20220117141615819](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117141615.png)
 
+引入 flutter module：
 
+只启动一个缓存引擎：
 
+![image-20220117144933906](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117144933.png)
 
+查看上面的图片，可以发现 未引入之前内存使用只有 `55Mb` 左右，而在初始化了 fluuter 引擎(Engine) 之后，内存瞬间到了 `181Mb` 。并且这还是初始化了单个的情况下。
 
+下面看一下初始化多个会有什么影响：
 
+```kotlin
+    initFlutterEngine("init_one")
+    initFlutterEngine("init_two")
+    initFlutterEngine("init_three")
 
+private fun initFlutterEngine(id: String): FlutterEngine {
+    //创建 Flutter 引擎
+    val flutterEngine = FlutterEngine(this)
+    //指定要跳转的flutter页面
+    flutterEngine.navigationChannel.setInitialRoute("main")
+    flutterEngine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
+    //这里做一个缓存，可以在适当的时候执行它，例如app里，在跳转前执行预加载
+    val flutterEngineCache = FlutterEngineCache.getInstance();
+    flutterEngineCache.put(id, flutterEngine)
+    //上面代码一般在跳转之前调用，这样可以使得跳转树的加快
+    return flutterEngine
+}
+```
 
+代码如上所示，下面看一下结果：
 
+![image-20220117145045833](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117145045.png)
 
+可以看到，一共初始化了四个缓存，共使用了 `355Mb`。比之前使用一个多了 `174Mb`,平均每增加一个缓存就会增加 `60Mb` 。
 
+通过上面的验证，可以得出，使用了 Flutter 之后，内存确实会增加很多，但是并不会造成内存压力。
 
+通增加缓存引擎的对比，发现每次增加一个缓存引擎，就会增加 `60Mb` 左右。
 
+**总结一下：**
 
+一般情况下使用时没有问题的，但是需要注意的是初始化引擎的时候初始化一个即可。不能每次打开页面都重新进行初始化引擎。
 
+### Image 内存初探
 
+#### Android：
 
+在 Android 中将内存分为 Java 虚拟内存和 Native 内存，各大厂商对 Java 虚拟机内存有一个上限，到达上限后就会触发 OOM 异常，而对 Native 内存使用没有太多的限制，现在的手机内存很大，一般都有较大的 Native 内存富余，那么Android 中的 ImageView 使用的是 Java 虚拟机内存还是 Native 内存呢？
 
+测试：在一个界面上，没点击一次，就在上面堆加一张图片，每张图片都小于上一张的图片，这样就不会出现完全覆盖的情况，如下图所示：
 
+<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117223451.png" alt="image-20220117223451052" style="zoom:50%;" />
+
+测试结果如下：        
+
+- Android 6.0 中：
+
+  使用的是 Java 内存 ，共使用了 `104.4Mb` 。
+
+- Android 7.0 中：
+
+  使用的是 Java 内存，共使用了 `144Mb`。
+
+- Android 8.0 中：
+
+  使用的是 Native 内存，共使用了 `196.6Mb`。
+
+- Android 10.0 中：
+
+  使用的是 Native 内存，共使用了 `159Mb`
+
+  <img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117223356.png" alt="image-20220117223355995" style="zoom:33%;" />
+
+- Android 12 中：
+
+  使用的是 Native 内存，使用了 `147Mb`
+
+  <img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117223745.png" alt="image-20220117223745462" style="zoom:33%;" />
+
+在测试中，Android 6.0 和 7.0 都是 Java 的部分内存增长，而 8.0 ，10.0  和 12 中 则是 Native 部分内存在增长。由此可得出后面的版本中使用的都是 Native 内存。
+
+上面测试中，从 6.0 到 8.0 测试结果参考的是 `https://www.jianshu.com/p/a241b73ce244` ，后面的都是本人亲自测试。
+
+#### Flutter ：
+
+测试方式和上面一样，代码如下：
+
+```dart
+@override
+Widget build(BuildContext context) {
+  return MaterialApp(
+    title: 'Material App',
+    home: Scaffold(
+      appBar: AppBar(
+        title: const Text('测试Flutter图片占用内存情况'),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          setState(() {
+            addImage();
+          });
+        },
+        tooltip: 'Increment',
+        child: const Icon(Icons.add),
+      ),
+      body: Container(
+        child: SizedBox(
+          width: 400,
+          height: 600,
+          child: Stack(
+            children: images,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+addImage() {
+  if (pos < list.length) {
+    images.add(Positioned(
+      child: Image.network(
+        list[pos],
+        fit: BoxFit.cover,
+        width: 400 - (pos + 30),
+        height: 600 - (pos + 60),
+      ),
+      left: 0,
+      top: 0,
+
+    ));
+    pos++;
+  }
+}
+```
+
+效果如下：
+
+<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117231000.png" alt="image-20220117230959928" style="zoom: 33%;" />
+
+测试的结果如下：
+
+- Android 6.0 中：
+
+  Graphics 使用  `604Mb`
+
+- Android 8.0 中：
+
+  Graphics 使用 `320Mb`
+
+- Android 10.0 中：
+
+  
