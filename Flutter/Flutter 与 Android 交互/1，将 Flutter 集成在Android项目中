@@ -562,7 +562,7 @@ methodChannel.setMethodCallHandler { call, result ->
 
 只启动一个缓存引擎：
 
-![image-20220117144933906](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117144933.png)
+![image-20220117144933906](https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117144933.png) 
 
 查看上面的图片，可以发现 未引入之前内存使用只有 `55Mb` 左右，而在初始化了 fluuter 引擎(Engine) 之后，内存瞬间到了 `181Mb` 。并且这还是初始化了单个的情况下。
 
@@ -601,113 +601,18 @@ private fun initFlutterEngine(id: String): FlutterEngine {
 
 一般情况下使用时没有问题的，但是需要注意的是初始化引擎的时候初始化一个即可。不能每次打开页面都重新进行初始化引擎。
 
-### Image 内存初探
+### 推荐阅读
 
-#### Android：
+-   [一文搞懂 BuildContext](https://juejin.cn/post/6991734742672474119#heading-0)
+-   [Key 的原理和使用](https://juejin.cn/post/6976069994270588941)
+-   [Flutter 三棵树的构建流程分析](https://juejin.cn/post/7031858186567188511#heading-13)
+-   [# 启动，渲染，setState 流程](https://juejin.cn/post/7036936085326266382)‘
+-   [Flutter 布局流程](https://juejin.cn/post/7049563669562146846#heading-13)
 
-在 Android 中将内存分为 Java 虚拟内存和 Native 内存，各大厂商对 Java 虚拟机内存有一个上限，到达上限后就会触发 OOM 异常，而对 Native 内存使用没有太多的限制，现在的手机内存很大，一般都有较大的 Native 内存富余，那么Android 中的 ImageView 使用的是 Java 虚拟机内存还是 Native 内存呢？
+### 参考资料
 
-测试：在一个界面上，没点击一次，就在上面堆加一张图片，每张图片都小于上一张的图片，这样就不会出现完全覆盖的情况，如下图所示：
+>https://docs.flutter.dev/development/add-to-app
 
-<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117223451.png" alt="image-20220117223451052" style="zoom:50%;" />
 
-测试结果如下：        
 
-- Android 6.0 中：
-
-  使用的是 Java 内存 ，共使用了 `104.4Mb` 。
-
-- Android 7.0 中：
-
-  使用的是 Java 内存，共使用了 `144Mb`。
-
-- Android 8.0 中：
-
-  使用的是 Native 内存，共使用了 `196.6Mb`。
-
-- Android 10.0 中：
-
-  使用的是 Native 内存，共使用了 `159Mb`
-
-  <img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117223356.png" alt="image-20220117223355995" style="zoom:33%;" />
-
-- Android 12 中：
-
-  使用的是 Native 内存，使用了 `147Mb`
-
-  <img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117223745.png" alt="image-20220117223745462" style="zoom:33%;" />
-
-在测试中，Android 6.0 和 7.0 都是 Java 的部分内存增长，而 8.0 ，10.0  和 12 中 则是 Native 部分内存在增长。由此可得出后面的版本中使用的都是 Native 内存。
-
-上面测试中，从 6.0 到 8.0 测试结果参考的是 `https://www.jianshu.com/p/a241b73ce244` ，后面的都是本人亲自测试。
-
-#### Flutter ：
-
-测试方式和上面一样，代码如下：
-
-```dart
-@override
-Widget build(BuildContext context) {
-  return MaterialApp(
-    title: 'Material App',
-    home: Scaffold(
-      appBar: AppBar(
-        title: const Text('测试Flutter图片占用内存情况'),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          setState(() {
-            addImage();
-          });
-        },
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
-      body: Container(
-        child: SizedBox(
-          width: 400,
-          height: 600,
-          child: Stack(
-            children: images,
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-addImage() {
-  if (pos < list.length) {
-    images.add(Positioned(
-      child: Image.network(
-        list[pos],
-        fit: BoxFit.cover,
-        width: 400 - (pos + 30),
-        height: 600 - (pos + 60),
-      ),
-      left: 0,
-      top: 0,
-
-    ));
-    pos++;
-  }
-}
-```
-
-效果如下：
-
-<img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20220117231000.png" alt="image-20220117230959928" style="zoom: 33%;" />
-
-测试的结果如下：
-
-- Android 6.0 中：
-
-  Graphics 使用  `604Mb`
-
-- Android 8.0 中：
-
-  Graphics 使用 `320Mb`
-
-- Android 10.0 中：
-
-  
+>如果本文有帮助到你的地方，不胜荣幸，如有文章中有错误和疑问，欢迎大家提出
