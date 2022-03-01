@@ -1,6 +1,6 @@
 本地服务（LocalService）
 
-调用者 和 Service 在同一个进程里，所以运行在主进程的 mian 线程中，所以不能进行耗时操作。可以采用在service 里面创建 一个 Thread 来执行 任务，service 影响的是 进程 的 生命周期。
+调用者 和 Service 在同一个进程里，所以运行在主进程的 mian 线程中，所以不能进行耗时操作。可以采用在service 里面创建 一个 Thread 来执行 任务，service 影响的是 进程 的 生命周期。 
 
 任何 Activity 都可以控制 同一 Service。而系统 只会创建 一个 对应的Service 的实例。
 
