@@ -122,3 +122,123 @@ Java 的反射机制是在运行的过程中，对于任何一个类我们都可
 	}
 ```
 
+### Java 的 char 是两个字节，如何存 UTF-8 字符
+
+- java 中的 char 是用两个字节来存的。
+
+- UTF-8 可能是 1-3个字节
+
+对于这个问题，首先要知道 char 是什么，UTF-8 是什么
+
+- char 里面存的是 Unicode 的码点，Unicode 是字符集，如 ASCII 码也是字符集
+
+  字符集完成字符到整数的映射：字符=》 码点
+
+- UTF-8 是编码，字符集不是编码
+
+  UTF-8 和 UTF-16 的区别是，前者最小的单位是一个字节，后者最小的单位是2个字节
+
+- Java char 不存 UTF-8 的字节，而是 UTF-16 的字节
+- Unicode 通用的字符集占两个字节，例如 "中"
+- Unicode 扩展字符集需要用一对 char 来表示，例如 "enoji"
+- Unicode 是字符集，不是编码，作用类似于 ASCII 码
+- Java String 的 length 不是字符数，而是 char 的个数
+
+
+
+### Java String 可以有多长
+
+- Java String 字面量形式
+
+  在代码中直接创建的字符串是保存在栈中的，例如 `String str = "aa..aaaa"`。
+
+  编译为字节码之后的表现形式就是 CONSTANT_Utf8_info 了，这是一种结构，如下：
+
+  ```
+  CONSTANT_Utf8_info{
+  	u1 tag;
+  	u2 length;
+  	u1 bytes[length]
+  }
+  ```
+
+  上面 u2 表示的两个字节的一个值，两个字节的值中最大的就是 65535 了。也就是说 length 最大师 65535，bytes 中最多也就可以存 65535 个字节了。
+
+  所以 str 的最大的长度必须小于 65535。为啥要小于 65535 呢，因为编译器在判断长度的时候是判断必须 < 65535，否则的话就会报错。所以如果你定义的字符串长度刚好是 65535 ，那么就会报错。主要注意的是这是 java 编译器的一个bug，如果你用的是 kotlin 那么就不会有这个问题。
+
+  如果字符串保存的是汉子，就需要注意有些汉子是两个字节，而有些是三个字节
+
+  最终 string 是保存在 Java 虚拟机中方法区的常量池中
+
+  总结：
+
+  - 首字节码限制，字符串最终的字节数不能超过 65535 个
+  - Latin 字符，受 Javac 代码限制，最多 6534 个
+  - 非 Latin 字符最终对应的字节个数差异焦点，最多字节个数是 65535 个
+  - 如果运行时方法区比较小，也会受到方法区大小的限制。如果超出了就会内存溢出
+
+- Java String 运行时创建在堆上的形式
+
+  从文件中读出来的字节数组，然后 `new String(bytes)`。这种情况下是存在堆内存中的。
+
+  String 的背后实际上是一个 char 的数组，这个数组受到虚拟机指令的限制，理论最大个数为 Integer.MAX_VALUE ，
+
+  总结：
+
+  - 受虚拟机指令限制，字符数理论上限为 Integer.MAX_VALUE ，
+  - 受虚拟机实现限制，实际上可能会小于 Integer.MAX_VALUE。
+  - 如果堆内存较小，也会受到堆内存的限制
+
+### Java 匿名内部类的限制
+
+首先，匿名内部类并不是没有名字，他的名字是 "包名+外部类的类名+$N"  , 其中，N 是内名内部类的顺序。例如`com.example.demo.Test$1`。
+
+- 匿名内部类继承结构：
+
+  匿名内部类在 new 出来的时候，就直接是一个子类了。还有就是在 Java 中匿名内部类是不能实现接口的，如下：
+
+  ```java
+  new View(context).setOnClickListener(new View.OnClickListener() {
+      @Override
+      public void onClick(View v) {}
+  });
+  //错误
+  new View(context).setOnClickListener(new View.OnClickListener() implements Runnable{
+      @Override
+      public void onClick(View v) { }
+  });
+  ```
+
+  上面的匿名内部类本身就是 `OnClickListener` 的子类了。如果在实现一个 runnable 就直接报错了，这种方式是错误的。但是可以通过方法内部类来实现这种方式：
+
+  ```java
+  private void test(Context context) {
+      class Listener extends Test implements View.OnClickListener {
+          @Override
+          public void onClick(View v) {
+  
+          }
+      }
+      new View(context).setOnClickListener(new Listener());
+  } 
+  ```
+
+  如上所示就可以了。
+
+  需要注意的是在 kotlin 中匿名内部类是可以实现接口的，如下：
+
+  ```kotlin
+  View(requireContext()).setOnClickListener(object : Test(), View.OnClickListener{
+      override fun onClick(v: View?) {
+      }
+  })
+  ```
+
+- 匿名内部类的构造方法
+
+  匿名内部类的构造方法是由编译器为其生成的，构造方法的第一个参数就是当前内部类对应外部类的引用了。如果匿名内部类的父类是非静态类，也需要把非静态的外部类传进来。这样的话就可以在内部类中使用外部的成员和父类的成员了。例如：
+
+  
+
+  如果匿名内部类实现的是接口，那么构造方法就只有一个外部类的引用了。此时就相当于是一个静态类了。
+
