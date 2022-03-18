@@ -1,8 +1,16 @@
 ### Window
 
-Window 是一个抽象类，具体实现是 `PhoneWindow`，Window 是所有视图的载体，不管是 Activity，Dialog，还是 Toast，他们的视图都是附加在 Window 上面的。
+Window 是一个窗口的概念，是所有视图的载体，不管是 Activity，Dialog，还是 Toast，他们的视图都是附加在 Window 上面的。例如在桌面显示一个悬浮窗，就需要用到 Window 来实现。`WindowManager` 是访问 Window 的入口。
 
-因此 Window 实际是 View 的直接管理者，例如：事件分发机制中，在 Activity 里面收到点击事件后，会首先通过 window 将事件传递到 DecorView，最后再分发到我们的 View 上。Activity 的 SetContentView 在底层也是通过 Window 来完成的。还有 findViewById  也是调用的 window。
+Window 是一个抽象类，他的实现类是 `PhoneWidow`，Activity 中的 DecorView ，Dialog 中的 View 都是在 PhoneWindow 中创建的。因此 Window 实际是 View 的直接管理者，例如：事件分发机制中，在 Activity 里面收到点击事件后，会首先通过 window 将事件传递到 DecorView，最后再分发到我们的 View 上。Activity 的 SetContentView 在底层也是通过 Window 来完成的。还有 findViewById  也是调用的 window。
+
+> 在我的理解中，上面第一句话中的 window 和 第二句话中的 Window 不是一个东西。
+>
+> 第一句话中的 Window 是一个窗口，是一个抽象的概念，并不真实存在，他只是以 View 的形式存在。例如通过 WindowManager 添加一个 Window，这个 Window 就是以 View 的形式存在的。
+>
+> 第二句话中的 Window 指的是一个类，他的实现类是 PhoneWindow，他是用来创建我们页面中所需要的 View 的。所以这个 Window 可以称之为 View 的直接管理者。PhoneWindow 中的 DecorView 最终也是附加到 Window(窗口)上面的。
+>
+> 因为在最开始的时候经常把二者搞混，Window 即是 View 管理者，也是窗口，显然是不合理的。以上是我的个人理解，如果有感觉不对的，请指出，谢谢！
 
 
 
@@ -956,3 +964,19 @@ Toast 通过 WindowManager 将 view 直接添加到了 Window 中，并没有创
 
 WindowManager 是我们访问 Window 的入口，Window 的具体实现位于 `WindowManagerService` 中。`WindowManager` 和 `WindowManagerService` 交互是一个 IPC 的过程，最终的 IPC 是在 `RootViewImpl` 中完成的。
 
+
+
+### 参考资料
+
+> Android 开发艺术探索
+
+
+
+### 推荐阅读
+
+- [IPC 之 AIDL 跨进程通信](https://blog.csdn.net/baidu_40389775/article/details/105409365?ops_request_misc=%257B%2522request%255Fid%2522%253A%2522164749845516782248586352%2522%252C%2522scm%2522%253A%252220140713.130102334.pc%255Fblog.%2522%257D&request_id=164749845516782248586352&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~blog~first_rank_ecpm_v1~rank_v31_ecpm-2-105409365.nonecase&utm_term=IPC&spm=1018.2226.3001.4450)
+- [IPC 之 AIDL 原理](https://blog.csdn.net/baidu_40389775/article/details/105409865?ops_request_misc=%257B%2522request%255Fid%2522%253A%2522164757299616782184648526%2522%252C%2522scm%2522%253A%252220140713.130102334.pc%255Fblog.%2522%257D&request_id=164757299616782184648526&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~blog~first_rank_ecpm_v1~rank_v31_ecpm-1-105409865.nonecase&utm_term=ipc%5D&spm=1018.2226.3001.4450)
+
+
+
+> 如果本文对你有帮助，请点赞支持，谢谢！
