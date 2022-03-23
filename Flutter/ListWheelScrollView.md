@@ -44,6 +44,7 @@ Widget build(BuildContext context) {
   <img src="https://gitee.com/lvknaginist/pic-go-picure-bed/raw/master/images/20210622234035.png" alt="image-20210622234035443" style="zoom:50%;" />
 
 - magnification：中间元素的放大倍数，默认是 1倍
+
 - useMagnifier：是否启用放大镜，如果没有使用 overAndUnderCenterOpacity 属性，则此属性必须设置为 true。
 
 - physics：滑动的效果
@@ -51,7 +52,6 @@ Widget build(BuildContext context) {
   - FixedExtentScrollPhysics：保证每次滑动结束后，都能停到中间 Item 的上面。
 
 - onSelectedItemChanged：滑动停止之后选择的某个 item 的下标回调
-- 
 
 
 
