@@ -38,13 +38,19 @@
 
 ### Compose 编程思想
 
+`Jetpack COmpose` 是一个适用于 android 的新式声明性界面工具包。`Compose` 提供了声明性 API ，可以在不以命令的方式改变前端视图的情况下呈现应用界面，从而使得编写和维护界面变得更加容易。
+
+#### 申明性编程范式
+
+长期以来，android 的视图结构一直可以表示为界面微件数。由于应用的状态会因用户交互等因素而发生变化，因此界面层次结构需要进行更新以显示当前的数据，最常见的就是 `findviewById` 等函数遍历树，并调用设置数据的方法等改变节点，这些方法会改变微件的内部状态
+
+再过去的几年中，整个行业已经转向声明性界面模型，该模型大大的简化了构建和更新界面管理的工程设计，改技术的工作原理是在改建上重头生成整个屏幕，然后执行必要的更改。此方法可以避免手动更新有状态视图结构的复杂性。`Compose` 是一个声明性的界面框架。
+
+重新生成整个屏幕所面临的一个难题是，在时间，计算力和电量方面可能成本高昂，为了减轻这一成本，`Compose` 会智能的选择在任何时间需要重新绘制界面的那些部分。这回对设计界面的组件有一定影响。
 
 
 
-
-
-
-### 组合函数
+#### 组合函数
 
 `Jetpack Compose` 是围绕可组合函数构建的，这些函数就是要显示在界面上的元素，在函数中只需要描述应用界面形状和数据依赖关系，而不用去关系界面的构建过程，
 
@@ -83,9 +89,216 @@ fun DefaultPreview() {
 
 setContent 块 定义了 Activity 的布局，我们不需要去定义 XML 的布局内容，只需要在其中调用组合函数即可。
 
-其中 Test 就是一个非常简单的可组合函数，里面定义了一个 Text，顾名思义，就是用来显示一段文本
+上面的 一个简单的示例`Greeting` 微件，它接收 `String` 而发出的一个显示问候消息的 `Text` 微件。此函数不会返回任何内容，因为他们描述所需的屏幕状态，而不是构造界面微件。
 
-并且，我们可以在 Test 函数上添加 @PreView 注释，这样就可以非常方便的进行预览
+其中 Greeting 就是一个非常简单的可组合函数，里面定义了一个 Text，顾名思义，就是用来显示一段文本
+
+并且，我们可以在 Test 函数上添加 @PreView 注释，这样就可以非常方便的进行预览。
+
+#### 声明式范式转变
+
+在 `Compose` 的声明方法中，微件相对无状态，并且不提供 get,set 方法。实际上，微件微件不会以对象的形式提供。你可以通过调用带有不同参数的统一可组合函数来更新界面。这使得架构模式，如 `ViewModel` 变得很容易。
+
+引用逻辑为顶级可组合函数提供数据。该函数通过调用其他可组合函数来使用这些数据来描述界面。将适当的数据传递给这些可组合函数，并沿层次结构向下传递数据。
+
+<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/202205251708931.png" alt="image-20220525170811867" style="zoom:50%;" />
+
+当用户与界面交互时，界面发起 `onClick`事件。这些事件会通知应用逻辑，应用逻辑可以改变应用状态。当状态发生变化时，系统就会重新调用可组合函数。这回导致重新绘制界面描述，此过程称为**重组**。
+
+<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/202205251708261.png" alt="image-20220525170848197" style="zoom:50%;" />
+
+#### 动态内容
+
+由于可组合函是 kotlin 编写的，因此他们可以像任何 kotlin 代码一样动态，例如，假设你想要的构建一个界面，如下：
+
+```kotlin
+@Composable
+fun Greeting(names: List<String>) {
+    for (name in names) {
+        Text("Hello $name")
+    }
+}
+```
+
+此函数接受一个列表，每位每个列表元素生成一个 Text。可组合函数可能性非常复杂，你可以使用 `if` 语句来确定是否需要显示特定的界面元素。例如循环，辅助函数等。你拥有地城语言的灵活性，这种强大的功能和灵活性是 `JetpackCompose` 的主要优势之一。
+
+
+
+#### 重组
+
+在 `Compose` 中，你可以用新数据再次调用某个可组合函数，这回导致组合函数重新进行重组。系统会根据需要使用新数据重新绘制发出的微件。Compose 框架可以只能的重组已经更改的组件。
+
+例如，下面这个可组合函数，用于显示一个按钮：
+
+```kotlin
+@Composable
+fun ClickCounter(clicks: Int, onClick: () -> Unit) {
+    Button(onClick = onClick) {
+        Text("I've been clicked $clicks times")
+    }
+}
+```
+
+每次点击按钮，就会更新 `clicks` 的值，Compose 会再次调用 lambda 与 Text 函数以显示新值，此过程称为 `重组`。不依赖该值的其他元素不会重组。
+
+重组是指在输入更改的时候再次调用可组合函数的过程。当函数更改时，会发生这种情况。当 Compose 根据新输入重组时，它仅调用可能已经更改的函数或 lambad，而跳过其余函数或 lambda。通过跳过岂会为更改参数的函数或者 lambda ，Compose 可以高效的重组。
+
+切勿依赖于执行可组合函数所产生的附带效应，因为可能会跳过函数的重组，如果这样做，用户可能在应用中遇到奇怪且不可预测的行为。例如：
+
+- 写入共享对象的属性
+- 更新 viewmodel 中的可观察项
+- 更新共享偏好设置
+
+可组合函数可能会每一帧一样的频繁执行，例如呈现动画的时候。所以可组合函数需要快速执行，所以避免在组合函数中出现卡顿，如果你需要执行高昂的操作，请在狗太协程中执行，并将结果作为参数传递给可组合函数。
+
+例如下面代码，应该将 sp 读取的操作放在 viewmode 中，然后在回调中触发更新：
+
+```kotlin
+@Composable
+fun SharedPrefsToggle(
+    text: String,
+    value: Boolean,
+    onValueChanged: (Boolean) -> Unit
+) {
+    Row {
+        Text(text)
+        Checkbox(checked = value, onCheckedChange = onValueChanged)
+    }
+}
+```
+
+##### 可组合函数可以按照任何顺序执行
+
+如果你看到了可组合函数的代码，可能会认为他们按照顺序运行。但实际上未必是这样。如果某个可组合函数包含对其他组合代码的调用，这些函数可以按照顺序执行。
+
+Compose 可以选择识别出某些界面元素的优先级高于其他界面元素，因此首先绘制这些元素。
+
+假设你有如下代码：
+
+```kotlin
+@Composable
+fun ButtonRow() {
+    MyFancyNavigation {
+        StartScreen()
+        MiddleScreen()
+        EndScreen()
+    }
+}
+```
+
+对于这三个的调用可以按照任何顺序进行。这意味着你不能让某个函数设置一个全局变量(附带效应)，并让别的函数利用这个全局变量而发生更改。所以每个函数都应该独立。
+
+##### 可组合函数可以并行运行
+
+Compose 可以通过并行运行可组合函数来优化重组。这样依赖，Compose 就可以利用多个核心，并按照较低的优先级运行可组合函数（不在屏幕上）
+
+**这种优化方方式意味着可组合函数可能会在后台的线程池中执行**，如果某个可组合函数对 `viewModel` 调用一个函数，则 Compose 可能会同时从多个线程调动该函数。
+
+为了确保应用可以正常运行，所有的组合都不应该有附带效应，而应该通过始终在界面线程上执行的 `onClick` 等回调触发附带效应。
+
+调用某个可组合函数时，调用可能发生在与调用方不同的线程上。这意味着，应避免修改可组合函数 lambda 中的变量代码，基因为此类代码并非线程安全代码，又因为他是可组合 lambda 不允许的附带效应。
+
+下面展示了一个可组合函数，他显示了一个列表已经数量。
+
+```kotlin
+@Composable
+fun ListComposable(myList: List<String>) {
+    Row(horizontalArrangement = Arrangement.SpaceBetween) {
+        Column {
+            for (item in myList) {
+                Text("Item: $item")
+            }
+        }
+        Text("Count: ${myList.size}")
+    }
+}
+```
+
+此函数没有附带效应，他会将输出列表转为界面。才代码非常适合展示小列表。不过此函数写入局部变量，则这并不是非线程安全或者正确的代码：
+
+```kotlin
+@Composable
+@Deprecated("Example with bug")
+fun ListWithBug(myList: List<String>) {
+    var items = 0
+
+    Row(horizontalArrangement = Arrangement.SpaceBetween) {
+        Column {
+            for (item in myList) {
+                Text("Item: $item")
+                items++ // Avoid! Side-effect of the column recomposing.
+            }
+        }
+        Text("Count: $items")
+    }
+}
+```
+
+在上面例子中，每次重组都会修改 items。这可以在动画的第一帧，或者在列表更新的时候。但不管怎么样，界面都会显示出错误的数量。因此 Compose 不支持这样的写入操作。通过静止此类操作，我们允许框架更改线程以执行可组合 lambda。
+
+
+
+##### 重组跳过尽可能多的内容
+
+如果界面某些部分无需，Compose 会尽力只重组需要更新的部分。这意味着，他可以跳过某些内容以重新运行单个按钮的可组合项，而不执行树中其上面或下面的任何可组合项。
+
+每个可组合函数和 lambda 都可以自行重组。以下演示了在呈现列表时重组如何跳过某些元素：
+
+```kotlin
+/**
+ * Display a list of names the user can click with a header
+ */
+@Composable
+fun NamePicker(
+    header: String,
+    names: List<String>,
+    onNameClicked: (String) -> Unit
+) {
+    Column {
+        // this will recompose when [header] changes, but not when [names] changes
+        Text(header, style = MaterialTheme.typography.h5)
+        Divider()
+
+        // LazyColumn is the Compose version of a RecyclerView.
+        // The lambda passed to items() is similar to a RecyclerView.ViewHolder.
+        LazyColumn {
+            items(names) { name ->
+                // When an item's [name] updates, the adapter for that item
+                // will recompose. This will not recompose when [header] changes
+                NamePickerItem(name, onNameClicked)
+            }
+        }
+    }
+}
+
+/**
+ * Display a single name the user can click.
+ */
+@Composable
+private fun NamePickerItem(name: String, onClicked: (String) -> Unit) {
+    Text(name, Modifier.clickable(onClick = { onClicked(name) }))
+}
+```
+
+这些作用域中的每一个都可能是在重组期间执行唯一一个作用域。当 header 发生更改时，Compose 可能会跳至 `Column lambda` 。二部执行他的任何父项。此外，执行 `Colum` 时，如果 names 未更改，`Compose` 可能会旋转跳过 LazyColum 的项。
+
+同样，执行所有组合函数或者 lambda 都应该没有附带效应。当需要执行附带效应时，应该通过回调触发。
+
+##### 重组是乐观操作
+
+只要 Compose 任务某个可组合函数可能已经更改，就会开始重组。重组是乐观操作，也就是说 Compose 预计会在参数再次更改之前完成重组。如果某个参数在重组完成之间发生改变，Compose 可能会取消重组，并使用新的参数重新开始。
+
+取消重组后，Compose 会从重组中舍弃界面树。如有附带效应依赖于显示的界面，即使取消了组成操作，也会应用该附带效应。这可能导致应用状态不一致。
+
+确保每个可组合函数和 lambda 都幂等，且没有附带效应，以处理乐观的重组
+
+##### 可组合函数可能会非常频繁的运行
+
+在某些情况下，可能针对界面每一帧运行一个可组合函数，如果该函数成本高昂，可能会导致界面卡顿。
+
+例如，你的微件重试读取设备配置，或者读取 sp，他可能会在一秒钟内读取这些数据上百次，这回对性能造成灾难性的影响。
+
+如果您的可组合函数需要数据，它应为相应的数据定义参数。然后，您可以阿静成本高昂的工作移到其他线程，并使用 `mutableStateOf` 或者 `LiveData` 将相应的数据传递给 Compose。
 
 
 
@@ -333,7 +546,7 @@ setContent {
 }
 ```
 
-![屏幕截图 2022-05-17 135439](https://cdn.jsdelivr.net/gh/LvKang-insist/PicGo/202205171356078.png)
+![屏幕截图 2022-05-17 135439](https://raw.githubusercontent.com/LvKang-insist/PicGo/main/202205171356078.png)
 
 #### Text
 
@@ -408,7 +621,7 @@ fun Button(
 
   按钮的颜色，默认是 `ButtonDefaults.buttonColors()` 。可选的有：
 
-  ![image-20220517151926468](https://cdn.jsdelivr.net/gh/LvKang-insist/PicGo/202205171519519.png)
+  ![image-20220517151926468](https://raw.githubusercontent.com/LvKang-insist/PicGo/main/202205171519519.png)
 
 ​		其中可以设置按钮的背景色，未启用的颜色等。
 
@@ -433,7 +646,7 @@ Button(
 
 具有外边框的按钮，内部使用的也是 `Button`。默认会有一个边框，其参数和 `Button` 一致，效果如下
 
-![image-20220517163336439](https://cdn.jsdelivr.net/gh/LvKang-insist/PicGo/202205171633495.png)
+![image-20220517163336439](https://raw.githubusercontent.com/LvKang-insist/PicGo/main/202205171633495.png)
 
 #### TextButton
 
@@ -481,7 +694,7 @@ fun Image() {
 
 ```
 
-![image-20220517172753037](https://cdn.jsdelivr.net/gh/LvKang-insist/PicGo/202205171727140.png)
+![image-20220517172753037](https://raw.githubusercontent.com/LvKang-insist/PicGo/main/202205171727140.png)
 
 像一些圆图或者边框啥的就可以在 modifer 中直接设置了，如下：
 
@@ -502,7 +715,7 @@ fun Image() {
 }
 ```
 
-![image-20220517173235028](https://cdn.jsdelivr.net/gh/LvKang-insist/PicGo/202205171732130.png)
+![image-20220517173235028](https://raw.githubusercontent.com/LvKang-insist/PicGo/main/202205171732130.png)
 
 ##### 加载网路图片
 
@@ -719,18 +932,22 @@ fun BottomText(isSelect: Boolean, name: String) {
 }
 ```
 
-如果看的不是特别清楚，在最后我会贴出 github 地址，方便查看。
+如果看的不是特别清楚，[可以直接点这里看](https://github.com/LvKang-insist/WanAndroid_Compose)
 
 
 
 ### 最后
 
-到这里，这篇文章也完了。这篇文章主要讲了一下 `Compose` 中最基本的一些 UI 函数以及主题啥的。这也是我最开始接触到 `Compose` 学到的东西，所以这也算是我的学习笔记吧。
-
-还有一个项目，目前只完成了一个最基本的架构。因为目前对状态以及生命周期啥的也不是特别了解，在页面跳转或者切换的时候，发现切换后对应的 Ui函数都会重组，之前的数据也没有了。接下来我会去看一下 `Compose` 中的状态如何管理，以及生命周期是什么样子的，然后慢慢的去完善这个项目。
-
-[项目地址](https://github.com/LvKang-insist/WanAndroid_Compose)
+到这里，这篇文章也完了。这篇文章主要讲了一下 `Compose` 中最基本的一些 核心思想以及 UI 函数以及主题啥的。这也是我最开始接触到 `Compose` 学到的东西，所以这也算是我的学习笔记吧。
 
 
 
-> 
+### 参考资料
+
+> https://developer.android.google.cn/jetpack/compose/documentation
+>
+> 以及网上的一些文章
+
+
+
+> 如果本文对你有帮助，请点赞支持，谢谢！如果有任何问题，可直接在下方评论，谢谢!
