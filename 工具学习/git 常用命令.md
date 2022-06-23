@@ -68,6 +68,16 @@
     git checkout v1.0
     ```
 
+    切换之后，git 会提示当前处于 `detached HEAD'` 中，这个时候建议不要去修改代码，如果需要修改，请在对应tag上创建一个分支在进行修改。
+
+    切换 tag 后，切回去可以使用 `git checkout master` master 是你的分支名字，例如你在 master 上面切到了 tag 1.0，切回去使用 git checkout master 就行了。
+
+  - 在 tag 上打分支
+
+    ```
+    git checkout -b branch_name tag_name
+    ```
+
   - 删除 tag
 
     ```
@@ -92,9 +102,6 @@
     git push -u origin master //再上传
     ```
 
-    
-
-  
 
   
 
@@ -103,3 +110,4 @@
   :wq 保存退出
 
   :q! 不保存退出
+
