@@ -151,7 +151,7 @@ mLayoutInflater.inflate(layoutResID, mContentParent);
 
 这个 layoutResID 就是 调用 setContentView 时传入的。这里将这个资源加载到了 mContentParent 上面，通过上面的分析我们可以知道 contentParent 就是 DecorView 中 id 为 @android:id/content 的 Framelayout 布局。
 
-<img src="2%EF%BC%8CsetContentView.assets/image-20200509112319150.png" alt="image-20200509112319150" style="zoom: 50%;" />
+<img src="2%EF%BC%8CsetContentView.assets/image-20200509112319150.png" alt="image-20200509112319150"  />
 
 最终大致的逻辑如上图
 

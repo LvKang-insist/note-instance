@@ -1,20 +1,31 @@
-Padding 分页组件简介
+### 前言
 
-1，核心类：PagedList
+`Paging` 库可以帮助你加载和显示本地的数据或者是网络中的数据。此库可以让你的应用更加高效的利用网络带宽和系统资源，`Paging` 库组件旨在契合推荐的Android应用架构，流畅的继承其他 `Jetpack` 组件，并提供了一流的 `Kotlin` 支持。
 
-​	PagedList 就是分页列表数据的容器，那为什么要设计这样的 PagedList 数据结构，本质的原因是应为分页数据的操作时异步的，因此 PagedList 可以对分页数据进行异步加载。
+### 使用 Paging 库的优势
 
-2，DataSource 及其工厂
+- 分页数据的内存中缓存，该功能可以确保在处理分页时高效的利用系统资源
+- 内置的请求重复信息删除功能，可以确保应用高效利用网络带宽和系统资源
+- 可配置的 RecyclerView 适配器，会在用户滚动到末尾时自动请求数据
+- 对 Kotlin 协程和 `Flow` 以及 `LiveData` 和 `RxJava` 的一流支持
+- 内置对错误的功能的支持，包括刷新和重试功能
 
-​	简单点说就是用来为 PagedList 容器提供分页数据，那就是数据源 DataSource。
+### 架构分层
 
-​	没到 padding 被告知需要加载更多数据， DataSource 就会将对应索引的数据交给 pagedList 
+`Paging` 库直接集成到推荐的 Android 应用架构中，该库的组件在应用的三个层中运行
 
-DataSource 数据类型
+<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/202206101716853.png" alt="image-20220610171642793" style="zoom:50%;" />
 
-DataSource<Key,Value> 数据源：key 对应加载数据的条件信息，value 对应数据实体类型
+- Respository 层
 
-- PageKeyedDataSource<Key,Value> ：适用于目标数据根据页面请求数据的场景
-- ItemKeyedDataSource<Key,Value> ：适用于目标数据的加载依赖特定 item 的信息
-- PositionalDataSource<Key,Value> ：适用于目标数据总数固定，通过特定的位置加载数据
+  `Respository ` 中主要使用的组件是 `PagingSource`，其中定义了数据源，以及如何获取数据等，可以从本地或者网络加载数据。
 
+  还可能使用的库是 `RemoteMediator`，该对象会出来来自分层的数据源，例如本地数据库的缓存和网络数据源的分页
+
+- ViewModel 层
+
+  `Pager` 是组件库提供的一个公共 API，基于 `PagingSource` 对象和 `PagingConfig` 配置对象来构造响应流中公开的 `PagingData` 实例 。
+
+- 界面层
+
+  界面层主要使用的是 `PagingDataAdapter` ，他是一种处理分页数据的 `RecyclerView` 适配器，另外还可以使用 `AsyncPagingDataDiffer` 组件来构建自定义的适配器
