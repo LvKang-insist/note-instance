@@ -445,22 +445,22 @@ public class MutableLiveData<T> extends LiveData<T> {
 
 #### 扩展 LiveData
 
-如果观察者的生命周期处于 STARTED 或者 RESUMED 状态，LiveData 就会认为观察者处于活跃状态，我们可以通过重写 LiveData 来判断当前是否为活跃状态
+如果观察者的生命周期处于 STARTED 或者 RESUMED 状态，LiveData 就会认为观察者处于活跃状态，我们可以通过重写 LiveData 来判断当前是否为活跃状态。
+
+例如页面上的一些操作需要在活跃状态下进行，如下载数据，或者需要实时的监听后台数据，就可以重新下面方法，并完成对应逻辑
 
 ```kotlin
-class StockLiveData(symbol: String) : LiveData<BigDecimal>() {
-    private val stockManager = StockManager(symbol)
-
-    private val listener = { price: BigDecimal ->
-        value = price
-    }
+class StockLiveData(url: String) : LiveData<String>() {
+    private val downloadManager = DownloadManager(url)
 
     override fun onActive() {
-        stockManager.requestPriceUpdates(listener)
+      if(!downloadManager.isStart()){
+          downloadManager.start()
+      }
     }
 
     override fun onInactive() {
-        stockManager.removeUpdates(listener)
+         downloadManager.stop()
     }
 }
 ```
@@ -469,6 +469,8 @@ class StockLiveData(symbol: String) : LiveData<BigDecimal>() {
 
 当没有任何活跃的观察者时，就会调用 onInactive 方法。
 
+当然这只是我想到的场景，开发中可以根据不同的业务场景做出不同的判断。
+
 #### 转换 LiveData
 
 - Transformations.map()
@@ -476,47 +478,67 @@ class StockLiveData(symbol: String) : LiveData<BigDecimal>() {
     在数据分发给观察者之前对其中存储的值进行更改，返回一个新的 LiveData，可以使用此方法
 
     ```kotlin
-    private val _state by lazy { MutableLiveData<VideoUIState>() }
-    
-    var lengthLiveData = Transformations.map(_state){
-        it.list!!.size
-    }
+     val strLiveData = MutableLiveData<String>()
+     val strLengthLiveData = Transformations.map(strLiveData) {
+        it.length
+     }
+     strLiveData.observe(this) {
+       Log.e("---345---> str：", "$it");
+     }
+     strLengthLiveData.observe(this) {
+      Log.e("---345---> strLength：", "$it");
+     }
+    strLiveData.value = "hello word"
     ```
+
+    ```kotlin
+     E/---345---> str：: hello word
+     E/---345---> strLength：: 10
+    ```
+
+    
 
 - Transformations.switchMap()
 
     相当于对上面的做了个判断，根据不同的需求返回不同的 LiveData
 
     ```kotlin
-    private val _state by lazy { MutableLiveData<VideoUIState>() }
+    val idLiveData = MutableLiveData<Int>()
     
-    var tranLiveData = Transformations.switchMap(_state) {
-        if (it.list != null)
-           //根据条件返回对应的 livedata
-        else
-            //根据条件返回对应的 livedata
+    val userLiveData = Transformations.switchMap(idLiveData) { id->
+          getUser(id)
     }
     ```
+    
+    也可以通过 id 去判断，返回对应的 livedata 即可。
 
-合并多个 LiveData
+- 合并多个 LiveData
 
 ```kotlin
-var live1 = MutableLiveData<String>()
-var live2 = MutableLiveData<String>()
+val live1 = MutableLiveData<String>()
+val live2 = MutableLiveData<String>()
 
-var mediator = MediatorLiveData<String>()
+val mediator = MediatorLiveData<String>()
 mediator.addSource(live1) {
-
+  mediator.value  = it
+  Log.e("---345---> live1", "$it");
 }
-mediator.addSource(live2){}
-
-
-mediator.observe(this){
-    
+mediator.addSource(live2){
+  mediator.value  = it
+  Log.e("---345---> live2", "$it");
 }
+mediator.observe(this, Observer {
+  Log.e("---345---> mediator", "$it");
+})
+live1.value = "hello"
 ```
 
-通过 MediatorLiveData 将两个 MutableLiveData 合并到一起，这样当任何一个发生变化，MediatorLiveData 都可以感知到
+```kotlin
+E/---345---> mediator: hello
+E/---345---> live1: hello
+```
+
+通过 MediatorLiveData 将两个 MutableLiveData 合并到一起，这样当任何一个发生变化，MediatorLiveData 都可以感知到。
 
 ### 相关问题
 
