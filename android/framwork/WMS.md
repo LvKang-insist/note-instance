@@ -79,5 +79,29 @@ startOtherServer 用于启动其他服务，大概有70多个，上面列出了 
 
 注释 6 用来初始化显示信息，注释 7 处用来通知 WMS 系统初始化工作已经完成，内部调用了 WindowManagerPolicy 的 systemReady 方法。
 
+接着，我们看看 WMS 的 maain 方法：
 
+```java
+public static WindowManagerService main(final Context context, final InputManagerService im,
+        final boolean showBootMsgs, final boolean onlyCore, WindowManagerPolicy policy,
+        ActivityTaskManagerService atm) {
+    return main(context, im, showBootMsgs, onlyCore, policy, atm,
+            SurfaceControl.Transaction::new, Surface::new, SurfaceControl.Builder::new);
+}
 
+public static WindowManagerService main(final Context context, final InputManagerService im,final boolean showBootMsgs, final boolean onlyCore, WindowManagerPolicy policy,ActivityTaskManagerService atm, Supplier<SurfaceControl.Transaction> transactionFactory,Supplier<Surface> surfaceFactory,
+            Function<SurfaceSession, SurfaceControl.Builder> surfaceControlFactory) {
+    	
+        DisplayThread.getHandler().runWithScissors(() ->
+                sInstance = new WindowManagerService(context, im, showBootMsgs, onlyCore, policy,
+                        atm, transactionFactory, surfaceFactory, surfaceControlFactory), 0);
+        return sInstance;
+    }
+
+```
+
+上面通过 DisplayThread 的 getHandler 方法获取到了 DisplayThread 的 Handler 实例。
+
+DisplayThread 是一个单例的前台线程，用来处理需要低延时显示的相关操作，并且只能由 WindowManager，DisplayManager 和 INputManager 试试执行快速操作。
+
+`runWithScissors` 表达式中
