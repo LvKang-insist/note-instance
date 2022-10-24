@@ -284,7 +284,7 @@ public int addToDisplayAsUser(IWindow window, int seq, WindowManager.LayoutParam
 
 需要注意的是，WMS 并不关系 View 的具体内容，他只关心各个应用显示的界面大小，层级值等，这些数据到包含在 WindowManager.LayoutParams 中。也就是上面的 atrs 属性。
 
-从 WindowManager 到 WMS 的具体流畅如下所示：
+从 WindowManager 到 WMS 的具体流程如下所示：
 
 <img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/202210221957806.png" alt="image-20221022195732745" style="zoom: 67%;" />
 
@@ -366,6 +366,8 @@ final WindowAnimator mAnimator;
 
 #### WMS 添加 Window
 
+##### Part 1
+
 ```java
 public int addWindow(Session session, IWindow client, int seq,
         LayoutParams attrs, int viewVisibility, int displayId, Rect outFrame,
@@ -373,27 +375,17 @@ public int addWindow(Session session, IWindow client, int seq,
         DisplayCutout.ParcelableWrapper outDisplayCutout, InputChannel outInputChannel,
         InsetsState outInsetsState, InsetsSourceControl[] outActiveControls,
         int requestUserId) {
-    Arrays.fill(outActiveControls, null);
+
     int[] appOp = new int[1];
-    final boolean isRoundedCornerOverlay = (attrs.privateFlags
-            & PRIVATE_FLAG_IS_ROUNDED_CORNERS_OVERLAY) != 0;
+    //1
     int res = mPolicy.checkAddPermission(attrs.type, isRoundedCornerOverlay, attrs.packageName,
             appOp);
     if (res != WindowManagerGlobal.ADD_OKAY) {
         return res;
     }
 
-    WindowState parentWindow = null;
-    final int callingUid = Binder.getCallingUid();
-    final int callingPid = Binder.getCallingPid();
-    final long origId = Binder.clearCallingIdentity();
-    final int type = attrs.type;
-
     synchronized (mGlobalLock) {
-        if (!mDisplayReady) {
-            throw new IllegalStateException("Display has not been initialialized");
-        }
-
+        //2
         final DisplayContent displayContent = getDisplayContentOrCreate(displayId, attrs.token);
 
         if (displayContent == null) {
@@ -401,19 +393,10 @@ public int addWindow(Session session, IWindow client, int seq,
                     + "not exist: %d. Aborting.", displayId);
             return WindowManagerGlobal.ADD_INVALID_DISPLAY;
         }
-        if (!displayContent.hasAccess(session.mUid)) {
-            ProtoLog.w(WM_ERROR,
-                    "Attempted to add window to a display for which the application "
-                            + "does not have access: %d.  Aborting.", displayId);
-            return WindowManagerGlobal.ADD_INVALID_DISPLAY;
-        }
-
-        if (mWindowMap.containsKey(client.asBinder())) {
-            ProtoLog.w(WM_ERROR, "Window %s is already added", client);
-            return WindowManagerGlobal.ADD_DUPLICATE_ADD;
-        }
-
+        ...
+				//3
         if (type >= FIRST_SUB_WINDOW && type <= LAST_SUB_WINDOW) {
+            //4
             parentWindow = windowForClientLocked(null, attrs.token, false);
             if (parentWindow == null) {
                 ProtoLog.w(WM_ERROR, "Attempted to add window with token that is not a window: "
@@ -427,307 +410,205 @@ public int addWindow(Session session, IWindow client, int seq,
                 return WindowManagerGlobal.ADD_BAD_SUBWINDOW_TOKEN;
             }
         }
+        ...		
+}
+```
 
-        if (type == TYPE_PRIVATE_PRESENTATION && !displayContent.isPrivate()) {
-            ProtoLog.w(WM_ERROR,
-                    "Attempted to add private presentation window to a non-private display.  "
-                            + "Aborting.");
-            return WindowManagerGlobal.ADD_PERMISSION_DENIED;
+WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添加成功，失败，无效的 display 等，这些状态定义在 WindowManagerGloabl 中 。
+
+注释1 处调用了 checkAddPermission 方法来检查权限，`mPolicy` 的实现类是 `PhoneWindowManager`，如果没有权限则不会执行后续的逻辑。
+
+注释2 通过 displayId 来获得 Window 要添加到那个 DisplayContent，如果没有找到，则返回 `WindowManagerGlobal.ADD_INVALID_DISPLAY` 状态。**其中DisplayContent 用来描述一块屏幕**。
+
+注释3 判断 type 的窗口类型(100 - 1999)，如果为 true，表示是一个子 Window。
+
+注释4 attrs.token 是 IBinder 类型的对象，`windowForClientLocked` 中会根据 attrs.token 作为 key 值从 mWIndowMap 中获取到该子窗口的父窗口，如果父窗口为 null，或者 type 值不正确就会返回错误状态。
+
+- ```java
+    final WindowState windowForClientLocked(Session session, IBinder client, boolean throwOnError) {
+        WindowState win = mWindowMap.get(client);
+        if (win == null) {
+            return null;
         }
-
-        if (type == TYPE_PRESENTATION && !displayContent.getDisplay().isPublicPresentation()) {
-            ProtoLog.w(WM_ERROR,
-                    "Attempted to add presentation window to a non-suitable display.  "
-                            + "Aborting.");
-            return WindowManagerGlobal.ADD_INVALID_DISPLAY;
+        if (session != null && win.mSession != session) {
+            return null;
         }
+        return win;
+    }
+    ```
 
-        int userId = UserHandle.getUserId(session.mUid);
-        if (requestUserId != userId) {
-            try {
-                mAmInternal.handleIncomingUser(callingPid, callingUid, requestUserId,
-                        false /*allowAll*/, ALLOW_NON_FULL, null, null);
-            } catch (Exception exp) {
-                ProtoLog.w(WM_ERROR, "Trying to add window with invalid user=%d",
-                        requestUserId);
-                return WindowManagerGlobal.ADD_INVALID_USER;
-            }
-            // It's fine to use this userId
-            userId = requestUserId;
-        }
+##### Part 2
 
-        ActivityRecord activity = null;
+```java
+ 				ActivityRecord activity = null;
         final boolean hasParent = parentWindow != null;
-        // Use existing parent window token for child windows since they go in the same token
-        // as there parent window so we can apply the same policy on them.
+        //1
         WindowToken token = displayContent.getWindowToken(
                 hasParent ? parentWindow.mAttrs.token : attrs.token);
-        // If this is a child window, we want to apply the same type checking rules as the
-        // parent window type.
+        //2
         final int rootType = hasParent ? parentWindow.mAttrs.type : type;
 
         boolean addToastWindowRequiresToken = false;
 
         if (token == null) {
-            if (!unprivilegedAppCanCreateTokenWith(parentWindow, callingUid, type,
-                    rootType, attrs.token, attrs.packageName)) {
-                return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-            }
-            final IBinder binder = attrs.token != null ? attrs.token : client.asBinder();
-            token = new WindowToken(this, binder, type, false, displayContent,
-                    session.mCanAddInternalSystemWindow, isRoundedCornerOverlay);
-        } else if (rootType >= FIRST_APPLICATION_WINDOW
-                && rootType <= LAST_APPLICATION_WINDOW) {
-            activity = token.asActivityRecord();
-            if (activity == null) {
-                ProtoLog.w(WM_ERROR, "Attempted to add window with non-application token "
-                        + ".%s Aborting.", token);
-                return WindowManagerGlobal.ADD_NOT_APP_TOKEN;
-            } else if (activity.getParent() == null) {
-                ProtoLog.w(WM_ERROR, "Attempted to add window with exiting application token "
-                        + ".%s Aborting.", token);
-                return WindowManagerGlobal.ADD_APP_EXITING;
-            } else if (type == TYPE_APPLICATION_STARTING && activity.startingWindow != null) {
-                ProtoLog.w(WM_ERROR,
-                        "Attempted to add starting window to token with already existing"
-                                + " starting window");
-                return WindowManagerGlobal.ADD_DUPLICATE_ADD;
-            }
-        } else if (rootType == TYPE_INPUT_METHOD) {
-            if (token.windowType != TYPE_INPUT_METHOD) {
-                ProtoLog.w(WM_ERROR, "Attempted to add input method window with bad token "
-                        + "%s.  Aborting.", attrs.token);
-                return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-            }
-        } else if (rootType == TYPE_VOICE_INTERACTION) {
-            if (token.windowType != TYPE_VOICE_INTERACTION) {
-                ProtoLog.w(WM_ERROR, "Attempted to add voice interaction window with bad token "
-                        + "%s.  Aborting.", attrs.token);
-                return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-            }
-        } else if (rootType == TYPE_WALLPAPER) {
-            if (token.windowType != TYPE_WALLPAPER) {
-                ProtoLog.w(WM_ERROR, "Attempted to add wallpaper window with bad token "
-                        + "%s.  Aborting.", attrs.token);
-                return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-            }
-        } else if (rootType == TYPE_ACCESSIBILITY_OVERLAY) {
-            if (token.windowType != TYPE_ACCESSIBILITY_OVERLAY) {
-                ProtoLog.w(WM_ERROR,
-                        "Attempted to add Accessibility overlay window with bad token "
-                                + "%s.  Aborting.", attrs.token);
-                return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-            }
-        } else if (type == TYPE_TOAST) {
-            // Apps targeting SDK above N MR1 cannot arbitrary add toast windows.
-            addToastWindowRequiresToken = doesAddToastWindowRequireToken(attrs.packageName,
-                    callingUid, parentWindow);
-            if (addToastWindowRequiresToken && token.windowType != TYPE_TOAST) {
-                ProtoLog.w(WM_ERROR, "Attempted to add a toast window with bad token "
-                        + "%s.  Aborting.", attrs.token);
-                return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-            }
-        } else if (type == TYPE_QS_DIALOG) {
-            if (token.windowType != TYPE_QS_DIALOG) {
-                ProtoLog.w(WM_ERROR, "Attempted to add QS dialog window with bad token "
-                        + "%s.  Aborting.", attrs.token);
-                return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-            }
-        } else if (token.asActivityRecord() != null) {
-            ProtoLog.w(WM_ERROR, "Non-null activity for system window of rootType=%d",
-                    rootType);
-            // It is not valid to use an app token with other system types; we will
-            // instead make a new token for it (as if null had been passed in for the token).
-            attrs.token = null;
-            token = new WindowToken(this, client.asBinder(), type, false, displayContent,
-                    session.mCanAddInternalSystemWindow);
-        }
-
-        final WindowState win = new WindowState(this, session, client, token, parentWindow,
-                appOp[0], seq, attrs, viewVisibility, session.mUid, userId,
-                session.mCanAddInternalSystemWindow);
-        if (win.mDeathRecipient == null) {
-            // Client has apparently died, so there is no reason to
-            // continue.
-            ProtoLog.w(WM_ERROR, "Adding window client %s"
-                    + " that is dead, aborting.", client.asBinder());
-            return WindowManagerGlobal.ADD_APP_EXITING;
-        }
-
-        if (win.getDisplayContent() == null) {
-            ProtoLog.w(WM_ERROR, "Adding window to Display that has been removed.");
-            return WindowManagerGlobal.ADD_INVALID_DISPLAY;
-        }
-
-        final DisplayPolicy displayPolicy = displayContent.getDisplayPolicy();
-        displayPolicy.adjustWindowParamsLw(win, win.mAttrs, callingPid, callingUid);
-
-        res = displayPolicy.validateAddingWindowLw(attrs, callingPid, callingUid);
-        if (res != WindowManagerGlobal.ADD_OKAY) {
-            return res;
-        }
-
-        final boolean openInputChannels = (outInputChannel != null
-                && (attrs.inputFeatures & INPUT_FEATURE_NO_INPUT_CHANNEL) == 0);
-        if  (openInputChannels) {
-            win.openInputChannel(outInputChannel);
-        }
-
-        // If adding a toast requires a token for this app we always schedule hiding
-        // toast windows to make sure they don't stick around longer then necessary.
-        // We hide instead of remove such windows as apps aren't prepared to handle
-        // windows being removed under them.
-        //
-        // If the app is older it can add toasts without a token and hence overlay
-        // other apps. To be maximally compatible with these apps we will hide the
-        // window after the toast timeout only if the focused window is from another
-        // UID, otherwise we allow unlimited duration. When a UID looses focus we
-        // schedule hiding all of its toast windows.
-        if (type == TYPE_TOAST) {
-            if (!displayContent.canAddToastWindowForUid(callingUid)) {
-                ProtoLog.w(WM_ERROR, "Adding more than one toast window for UID at a time.");
-                return WindowManagerGlobal.ADD_DUPLICATE_ADD;
-            }
-            // Make sure this happens before we moved focus as one can make the
-            // toast focusable to force it not being hidden after the timeout.
-            // Focusable toasts are always timed out to prevent a focused app to
-            // show a focusable toasts while it has focus which will be kept on
-            // the screen after the activity goes away.
-            if (addToastWindowRequiresToken
-                    || (attrs.flags & LayoutParams.FLAG_NOT_FOCUSABLE) == 0
-                    || displayContent.mCurrentFocus == null
-                    || displayContent.mCurrentFocus.mOwnerUid != callingUid) {
-                mH.sendMessageDelayed(
-                        mH.obtainMessage(H.WINDOW_HIDE_TIMEOUT, win),
-                        win.mAttrs.hideTimeoutMilliseconds);
-            }
-        }
-
-        // From now on, no exceptions or errors allowed!
-
-        res = WindowManagerGlobal.ADD_OKAY;
-
-        if (mUseBLAST) {
-            res |= WindowManagerGlobal.ADD_FLAG_USE_BLAST;
-        }
-        if (sEnableTripleBuffering) {
-            res |= WindowManagerGlobal.ADD_FLAG_USE_TRIPLE_BUFFERING;
-        }
-
-        if (displayContent.mCurrentFocus == null) {
-            displayContent.mWinAddedSinceNullFocus.add(win);
-        }
-
-        if (excludeWindowTypeFromTapOutTask(type)) {
-            displayContent.mTapExcludedWindows.add(win);
-        }
-
-        win.attach();
-        mWindowMap.put(client.asBinder(), win);
-        win.initAppOpsState();
-
-        final boolean suspended = mPmInternal.isPackageSuspended(win.getOwningPackage(),
-                UserHandle.getUserId(win.getOwningUid()));
-        win.setHiddenWhileSuspended(suspended);
-
-        final boolean hideSystemAlertWindows = !mHidingNonSystemOverlayWindows.isEmpty();
-        win.setForceHideNonSystemOverlayWindowIfNeeded(hideSystemAlertWindows);
-
-        final ActivityRecord tokenActivity = token.asActivityRecord();
-        if (type == TYPE_APPLICATION_STARTING && tokenActivity != null) {
-            tokenActivity.startingWindow = win;
-            ProtoLog.v(WM_DEBUG_STARTING_WINDOW, "addWindow: %s startingWindow=%s",
-                    activity, win);
-        }
-
-        boolean imMayMove = true;
-
-        win.mToken.addWindow(win);
-        displayPolicy.addWindowLw(win, attrs);
-        if (type == TYPE_INPUT_METHOD) {
-            displayContent.setInputMethodWindowLocked(win);
-            imMayMove = false;
-        } else if (type == TYPE_INPUT_METHOD_DIALOG) {
-            displayContent.computeImeTarget(true /* updateImeTarget */);
-            imMayMove = false;
-        } else {
-            if (type == TYPE_WALLPAPER) {
-                displayContent.mWallpaperController.clearLastWallpaperTimeoutTime();
-                displayContent.pendingLayoutChanges |= FINISH_LAYOUT_REDO_WALLPAPER;
-            } else if ((attrs.flags & FLAG_SHOW_WALLPAPER) != 0) {
-                displayContent.pendingLayoutChanges |= FINISH_LAYOUT_REDO_WALLPAPER;
-            } else if (displayContent.mWallpaperController.isBelowWallpaperTarget(win)) {
-                // If there is currently a wallpaper being shown, and
-                // the base layer of the new window is below the current
-                // layer of the target window, then adjust the wallpaper.
-                // This is to avoid a new window being placed between the
-                // wallpaper and its target.
-                displayContent.pendingLayoutChanges |= FINISH_LAYOUT_REDO_WALLPAPER;
-            }
-        }
-
-        final WindowStateAnimator winAnimator = win.mWinAnimator;
-        winAnimator.mEnterAnimationPending = true;
-        winAnimator.mEnteringAnimation = true;
-        // Check if we need to prepare a transition for replacing window first.
-        if (activity != null && activity.isVisible()
-                && !prepareWindowReplacementTransition(activity)) {
-            // If not, check if need to set up a dummy transition during display freeze
-            // so that the unfreeze wait for the apps to draw. This might be needed if
-            // the app is relaunching.
-            prepareNoneTransitionForRelaunching(activity);
-        }
-
-        if (displayPolicy.getLayoutHint(win.mAttrs, token, outFrame, outContentInsets,
-                outStableInsets, outDisplayCutout)) {
-            res |= WindowManagerGlobal.ADD_FLAG_ALWAYS_CONSUME_SYSTEM_BARS;
-        }
-        outInsetsState.set(win.getInsetsState(), win.isClientLocal());
-
-        if (mInTouchMode) {
-            res |= WindowManagerGlobal.ADD_FLAG_IN_TOUCH_MODE;
-        }
-        if (win.mActivityRecord == null || win.mActivityRecord.isClientVisible()) {
-            res |= WindowManagerGlobal.ADD_FLAG_APP_VISIBLE;
-        }
-
-        displayContent.getInputMonitor().setUpdateInputWindowsNeededLw();
-
-        boolean focusChanged = false;
-        if (win.canReceiveKeys()) {
-            focusChanged = updateFocusedWindowLocked(UPDATE_FOCUS_WILL_ASSIGN_LAYERS,
-                    false /*updateInputWindows*/);
-            if (focusChanged) {
-                imMayMove = false;
-            }
-        }
-
-        if (imMayMove) {
-            displayContent.computeImeTarget(true /* updateImeTarget */);
-        }
-
-        // Don't do layout here, the window must call
-        // relayout to be displayed, so we'll do it there.
-        win.getParent().assignChildLayers();
-
-        if (focusChanged) {
-            displayContent.getInputMonitor().setInputFocusLw(displayContent.mCurrentFocus,
-                    false /*updateInputWindows*/);
-        }
-        displayContent.getInputMonitor().updateInputWindowsLw(false /*force*/);
-
-        ProtoLog.v(WM_DEBUG_ADD_REMOVE, "addWindow: New client %s"
-                + ": window=%s Callers=%s", client.asBinder(), win, Debug.getCallers(5));
-
-        if (win.isVisibleOrAdding() && displayContent.updateOrientation()) {
-            displayContent.sendNewConfiguration();
-        }
-
-        getInsetsSourceControls(win, outActiveControls);
-    }
-
-    Binder.restoreCallingIdentity(origId);
-
-    return res;
-}
+                if (rootType >= FIRST_APPLICATION_WINDOW && rootType <= LAST_APPLICATION_WINDOW) {
+                    Slog.w(TAG_WM, "Attempted to add application window with unknown token "
+                          + attrs.token + ".  Aborting.");
+                    return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
+                }
+                if (rootType == TYPE_INPUT_METHOD) {
+                    Slog.w(TAG_WM, "Attempted to add input method window with unknown token "
+                          + attrs.token + ".  Aborting.");
+                    return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
+                }
+                ...
+                if (rootType == TYPE_WALLPAPER) {
+                    Slog.w(TAG_WM, "Attempted to add wallpaper window with unknown token "
+                          + attrs.token + ".  Aborting.");
+                    return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
+                }
+                ...
+                if (type == TYPE_TOAST) {
+                    // Apps targeting SDK above N MR1 cannot arbitrary add toast windows.
+                    if (doesAddToastWindowRequireToken(attrs.packageName, callingUid,
+                            parentWindow)) {
+                        Slog.w(TAG_WM, "Attempted to add a toast window with unknown token "
+                                + attrs.token + ".  Aborting.");
+                        return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
+                    }
+                }
+                final IBinder binder = attrs.token != null ? attrs.token : client.asBinder();
+                final boolean isRoundedCornerOverlay =
+                        (attrs.privateFlags & PRIVATE_FLAG_IS_ROUNDED_CORNERS_OVERLAY) != 0;
+           			//3
+                token = new WindowToken(this, binder, type, false, displayContent,
+                        session.mCanAddInternalSystemWindow, isRoundedCornerOverlay);
+          			//4
+            } else if (rootType >= FIRST_APPLICATION_WINDOW && rootType <= LAST_APPLICATION_WINDOW) {							  //5	
+                atoken = token.asAppWindowToken();
+                if (atoken == null) {
+                    Slog.w(TAG_WM, "Attempted to add window with non-application token "
+                          + token + ".  Aborting.");
+                    return WindowManagerGlobal.ADD_NOT_APP_TOKEN;
+                } 
+          			....
+            } else if (rootType == TYPE_INPUT_METHOD) {
+                if (token.windowType != TYPE_INPUT_METHOD) {
+                    Slog.w(TAG_WM, "Attempted to add input method window with bad token "
+                            + attrs.token + ".  Aborting.");
+                      return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
+                }
+            } 
+						.....
 ```
+
+注释 1 处通过 displayContent 的 getWindowToken 方法得到 WindowToken。
+
+注释2 如果有父窗口就将父窗口的 type 赋值给 rootType，否则就将自己的 type 赋值给 rootType，也就是说，如果是子窗口，就需要使用与父窗口一样的检查规则，接着就会判断如果是应用窗口，或者是 TYPE_INPUT_METHOD、TYPE_WALLPAPER等类型时，就会返回WindowManagerGlobal.ADD_BAD_APP_TOKEN，表示这些类型必须需要有 token。通过前面筛选之后，最后会在注释3处隐式创建 WIndowToken。
+
+注释三处进行隐式创建 WindowToken，这说明我们添加窗口时是可以不向 WMS 提供 WindowToken 的，WindowToken 的隐式和显式创建是需要区分的，第四个参数 false 表示隐式创建。
+
+接着就是 token 不为空的情况，会在注释 4 处判断是否位 `应用窗口`，如果是 应用窗口，就会讲 WindowToken 转换为针对于应用程序窗口的 AppWindowToken，然后再继续进行判断
+
+##### part3
+
+```java
+//1
+final WindowState win = new WindowState(this, session, client, token, parentWindow,
+                    appOp[0], seq, attrs, viewVisibility, session.mUid,
+                    session.mCanAddInternalSystemWindow);
+          //1  
+					if (win.mDeathRecipient == null) {
+                // Client has apparently died, so there is no reason to
+                // continue.
+                Slog.w(TAG_WM, "Adding window client " + client.asBinder()
+                        + " that is dead, aborting.");
+                return WindowManagerGlobal.ADD_APP_EXITING;
+            }
+						//3
+            if (win.getDisplayContent() == null) {
+                Slog.w(TAG_WM, "Adding window to Display that has been removed.");
+                return WindowManagerGlobal.ADD_INVALID_DISPLAY;
+            }
+
+            final DisplayPolicy displayPolicy = displayContent.getDisplayPolicy();
+						//4
+            displayPolicy.adjustWindowParamsLw(win, win.mAttrs, Binder.getCallingPid(),
+                    Binder.getCallingUid());
+            win.setShowToOwnerOnlyLocked(mPolicy.checkShowToOwnerOnly(attrs));
+						//5
+            res = displayPolicy.prepareAddWindowLw(win, attrs);
+           
+            ....
+
+            win.attach();
+						//6
+            mWindowMap.put(client.asBinder(), win);
+
+            win.initAppOpsState();
+
+            final boolean suspended = mPmInternal.isPackageSuspended(win.getOwningPackage(),
+                    UserHandle.getUserId(win.getOwningUid()));
+            win.setHiddenWhileSuspended(suspended);
+
+            final boolean hideSystemAlertWindows = !mHidingNonSystemOverlayWindows.isEmpty();
+            win.setForceHideNonSystemOverlayWindowIfNeeded(hideSystemAlertWindows);
+
+            final AppWindowToken aToken = token.asAppWindowToken();
+            if (type == TYPE_APPLICATION_STARTING && aToken != null) {
+                aToken.startingWindow = win;
+                if (DEBUG_STARTING_WINDOW) Slog.v (TAG_WM, "addWindow: " + aToken
+                        + " startingWindow=" + win);
+            }
+
+            boolean imMayMove = true;
+						//7
+            win.mToken.addWindow(win);
+            if (type == TYPE_INPUT_METHOD) {
+                displayContent.setInputMethodWindowLocked(win);
+                imMayMove = false;
+            } else if (type == TYPE_INPUT_METHOD_DIALOG) {
+                displayContent.computeImeTarget(true /* updateImeTarget */);
+                imMayMove = false;
+            } else {
+                if (type == TYPE_WALLPAPER) {
+                    displayContent.mWallpaperController.clearLastWallpaperTimeoutTime();
+                    displayContent.pendingLayoutChanges |= FINISH_LAYOUT_REDO_WALLPAPER;
+                } else if ((attrs.flags&FLAG_SHOW_WALLPAPER) != 0) {
+                    displayContent.pendingLayoutChanges |= FINISH_LAYOUT_REDO_WALLPAPER;
+                } else if (displayContent.mWallpaperController.isBelowWallpaperTarget(win)) {
+                    displayContent.pendingLayoutChanges |= FINISH_LAYOUT_REDO_WALLPAPER;
+                }
+            }
+            ...
+```
+
+在注释1 处创建了`WindowState`，保存了窗口的所有状态信息(例如 WMS ,Session，WindowToken等)，在 WMS 中它代表一个窗口。
+
+在注释2和注释3处判断请求添加窗口的客户端是否已经死亡，如果死亡则不会执行下面逻辑。
+
+注释 4处调用了 adjustWindowParamsLw 方法，这里会根据窗口的 type 类型对窗口的 LayoutParams 的一些成员变量进行修改。源码注释信息为 **清理来自客户端的布局参数。允许策略 做一些事情，比如确保特定类型的窗口不能 输入焦点**
+
+注释 5处调用了 `prepareAddWindowLw` 方法用于准备将窗口添加到系统中
+
+注释 6处将 WindowState 添加到 mWindowMap 中，mWindowMap 是各种窗口的集合。
+
+注释 7 处将 WindowState 添加到该 WindowState 对应的 WindowToken 中（实际上就是保存在 WindowToken 的父类 WindowContainer），这样 WindowToken 就包含了相同组件的 WindowState。
+
+##### 总结
+
+addWindow 主要是做了下面四件事
+
+1. 对所要添加的窗口进行检查，如果不满足一些条件，就不会执行下面逻辑
+2. WindowToken 的相关处理，有些窗口就必须要提供 WindowToken，有些则需要 WMS 隐式创建 WindowToken
+3. WindowState 的创建和相关处理，将 WIndowToken 与 WindowState 相关联
+4. 创建和配置 DisplayContent，完成创建添加到系统前的准备工作
+
+
+
+
+
+
+
+
+
