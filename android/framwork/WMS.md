@@ -173,7 +173,7 @@ private void initPolicy() {
 
 在上面的文章中，一共提供了三个线程，分别是 `system_server`，`android.display` ，`android.ui`，他们之间的关系如下图所示：
 
-![image-20221021162034412](https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202210211620453.png)
+![image-20221025165302923](/Users/tidycar/Library/Application Support/typora-user-images/image-20221025165302923.png)
 
 `system_server` 线程中会调用 main 方法，mian 方法中会创建 WMS，创建的过程实在 `android.display` 线程中，他的优先级会高一些，创建完成后才会唤醒处于 `system_server` 线程。
 
@@ -364,6 +364,87 @@ final WindowAnimator mAnimator;
 
   IMS ,输入系统的管理者。IMS 会对触摸事件进行处理，他会寻找一个最合适的窗口来处理触摸反馈信息，WMS 是窗口管理者，因此 WMS 理所应当的成为了输入系统的中转站，WMS 包含了 IMS 的引用不足为怪。
 
+#### WMS 重要的类
+
+1. RootWindowContainer
+
+    在 WMS 构造方法中进行创建，一个设备对应着一个 RootWindowContainer，负责管理 DisplayContent。
+
+    RootWindowContainer 继承自 WindowContainer，是所有窗口管理类的基类。
+
+2. DisplayContent
+
+    DisplayContent 继承自 WindowContainer，DisplayContent 用来描述一块屏幕，对应一个屏幕 id，在 WMS 中的 `addWindow` 方法中，通过 `getDisplayContentOrCreate` 来获取。
+
+    ```java
+    private DisplayContent getDisplayContentOrCreate(int displayId, IBinder token) {
+        if (token != null) {
+            final WindowToken wToken = mRoot.getWindowToken(token);
+            if (wToken != null) {
+                return wToken.getDisplayContent();
+            }
+        }
+        DisplayContent displayContent = mRoot.getDisplayContent(displayId);
+    		
+        if (displayContent == null) {
+            final Display display = mDisplayManager.getDisplay(displayId);
+            if (display != null) {
+                displayContent = mRoot.createDisplayContent(display, null /* controller */);
+            }
+        }
+    
+        return displayContent;
+    }
+    ```
+
+    如果没有获取到，RootWindowContainer 的 createDispalyContent 创建，
+
+    ```java
+    DisplayContent(Display display, WindowManagerService service,
+            ActivityDisplay activityDisplay) {
+        super(service);
+        mAcitvityDisplay = activityDisplay;
+        //获取屏幕相关信息，屏幕id已经大小等。
+        mDisplay = display;
+        mDisplayId = display.getDisplayId();
+        mWallpaperController = new WallpaperController(mWmService, this);
+        .....
+        //初始化 SurfaceControl  
+        final SurfaceControl.Builder b = mWmService.makeSurfaceBuilder(mSession)
+          			.setOpaque(true)
+          			.setContainerLayer();
+        mWindowingLayer = b.setName("Display Root").build();
+        mOverlayLayer = b.setName("Display Overlays").build();
+      
+        // These are the only direct children we should ever have and they are permanent.
+        super.addChild(mBelowAppWindowsContainers, null);
+        super.addChild(mTaskStackContainers, null);
+        super.addChild(mAboveAppWindowsContainers, null);
+        super.addChild(mImeWindowsContainers, null);
+    
+        // Add itself as a child to the root container.
+        mWmService.mRoot.addChild(this, null);
+    		...
+    }
+    ```
+
+    从构造方法中可以看出，DisplayContent 内部管理了 4 哥 WindowContainer：
+
+    - mBelowAppWindowsContainers：包含应该显示在 App类窗口下的非 App类的窗口，layer 为 0
+    - mTaskStackContainers：包含了所有与 App(Activities)相关的 Window，layer 为 1
+    - mAboveAppWindowsContainers：包含应显示在应用程序容器下方的所有非应用程序窗口容器，layer 为 2
+    - mImeWindowsContainers：包含了所有 IME 窗口容器
+
+3. WindowToken
+
+    WindowToken 主要有两个作用
+
+    1. 可以理解为窗口令牌，当应用程序想要向 WMS 申请创建一个窗口，则需要向 WMS  出示有效的 WindowToken。并且窗口类型必须与所持有的 WindowToken 的类型一致。
+
+        从下面的代码中可以看到，在创建系统类型窗口时不需要提供有效的 Token，WMS 会隐式的创建一个 WindowToken，看起来谁都可以添加这个系统窗口，但是在 addWindow 方法一开始就调用 `mPolicy.checkAddPermission` 来检查权限，她要求客户端必须拥有 INTERNAL_SYSTEM_WINDOW 或者 SYSTEM_ALERT_WINDOW 权限才可以创建系统类型窗口。
+
+    2. WindowToken 会将相同组件（例如 Activity）的窗口（WindowState）集合在一起，方便管理。
+
 #### WMS 添加 Window
 
 ##### Part 1
@@ -510,6 +591,8 @@ WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添�
 
 接着就是 token 不为空的情况，会在注释 4 处判断是否位 `应用窗口`，如果是 应用窗口，就会讲 WindowToken 转换为针对于应用程序窗口的 AppWindowToken，然后再继续进行判断
 
+
+
 ##### part3
 
 ```java
@@ -562,7 +645,7 @@ final WindowState win = new WindowState(this, session, client, token, parentWind
             }
 
             boolean imMayMove = true;
-						//7
+						//7，添加窗口
             win.mToken.addWindow(win);
             if (type == TYPE_INPUT_METHOD) {
                 displayContent.setInputMethodWindowLocked(win);
