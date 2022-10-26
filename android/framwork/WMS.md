@@ -173,7 +173,7 @@ private void initPolicy() {
 
 在上面的文章中，一共提供了三个线程，分别是 `system_server`，`android.display` ，`android.ui`，他们之间的关系如下图所示：
 
-![image-20221025165302923](/Users/tidycar/Library/Application Support/typora-user-images/image-20221025165302923.png)
+<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202210261651764.png" style="zoom: 67%;" />
 
 `system_server` 线程中会调用 main 方法，mian 方法中会创建 WMS，创建的过程实在 `android.display` 线程中，他的优先级会高一些，创建完成后才会唤醒处于 `system_server` 线程。
 
@@ -468,16 +468,10 @@ public int addWindow(Session session, IWindow client, int seq,
     synchronized (mGlobalLock) {
         //2
         final DisplayContent displayContent = getDisplayContentOrCreate(displayId, attrs.token);
-
-        if (displayContent == null) {
-            ProtoLog.w(WM_ERROR, "Attempted to add window to a display that does "
-                    + "not exist: %d. Aborting.", displayId);
-            return WindowManagerGlobal.ADD_INVALID_DISPLAY;
-        }
         ...
 				//3
         if (type >= FIRST_SUB_WINDOW && type <= LAST_SUB_WINDOW) {
-            //4
+            //4，获取父窗口
             parentWindow = windowForClientLocked(null, attrs.token, false);
             if (parentWindow == null) {
                 ProtoLog.w(WM_ERROR, "Attempted to add window with token that is not a window: "
@@ -497,13 +491,13 @@ public int addWindow(Session session, IWindow client, int seq,
 
 WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添加成功，失败，无效的 display 等，这些状态定义在 WindowManagerGloabl 中 。
 
-注释1 处调用了 checkAddPermission 方法来检查权限，`mPolicy` 的实现类是 `PhoneWindowManager`，如果没有权限则不会执行后续的逻辑。
+注释1 处调用了 checkAddPermission 方法来检查权限，`mPolicy` 的实现类是 `PhoneWindowManager`。
 
-注释2 通过 displayId 来获得 Window 要添加到那个 DisplayContent，如果没有找到，则返回 `WindowManagerGlobal.ADD_INVALID_DISPLAY` 状态。**其中DisplayContent 用来描述一块屏幕**。
+注释2 通过  displayId 来获得 Window 要添加到那个 DisplayContent，如果没有找到，则返回 `WindowManagerGlobal.ADD_INVALID_DISPLAY` 状态。**其中DisplayContent 用来描述一块屏幕**。
 
 注释3 判断 type 的窗口类型(100 - 1999)，如果为 true，表示是一个子 Window。
 
-注释4 attrs.token 是 IBinder 类型的对象，`windowForClientLocked` 中会根据 attrs.token 作为 key 值从 mWIndowMap 中获取到该子窗口的父窗口，如果父窗口为 null，或者 type 值不正确就会返回错误状态。
+注释4 attrs.token 是 IBinder 类型的对象，`windowForClientLocked` 中会根据 attrs.token 作为 key 值从 mWIndowMap 中获取到该子窗口的父窗口，如果父窗口为 null，或者父窗口也是子窗口，直接 return
 
 - ```java
     final WindowState windowForClientLocked(Session session, IBinder client, boolean throwOnError) {
@@ -532,32 +526,7 @@ WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添�
         boolean addToastWindowRequiresToken = false;
 
         if (token == null) {
-                if (rootType >= FIRST_APPLICATION_WINDOW && rootType <= LAST_APPLICATION_WINDOW) {
-                    Slog.w(TAG_WM, "Attempted to add application window with unknown token "
-                          + attrs.token + ".  Aborting.");
-                    return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-                }
-                if (rootType == TYPE_INPUT_METHOD) {
-                    Slog.w(TAG_WM, "Attempted to add input method window with unknown token "
-                          + attrs.token + ".  Aborting.");
-                    return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-                }
-                ...
-                if (rootType == TYPE_WALLPAPER) {
-                    Slog.w(TAG_WM, "Attempted to add wallpaper window with unknown token "
-                          + attrs.token + ".  Aborting.");
-                    return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-                }
-                ...
-                if (type == TYPE_TOAST) {
-                    // Apps targeting SDK above N MR1 cannot arbitrary add toast windows.
-                    if (doesAddToastWindowRequireToken(attrs.packageName, callingUid,
-                            parentWindow)) {
-                        Slog.w(TAG_WM, "Attempted to add a toast window with unknown token "
-                                + attrs.token + ".  Aborting.");
-                        return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
-                    }
-                }
+        				...
                 final IBinder binder = attrs.token != null ? attrs.token : client.asBinder();
                 final boolean isRoundedCornerOverlay =
                         (attrs.privateFlags & PRIVATE_FLAG_IS_ROUNDED_CORNERS_OVERLAY) != 0;
@@ -568,15 +537,11 @@ WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添�
             } else if (rootType >= FIRST_APPLICATION_WINDOW && rootType <= LAST_APPLICATION_WINDOW) {							  //5	
                 atoken = token.asAppWindowToken();
                 if (atoken == null) {
-                    Slog.w(TAG_WM, "Attempted to add window with non-application token "
-                          + token + ".  Aborting.");
                     return WindowManagerGlobal.ADD_NOT_APP_TOKEN;
                 } 
           			....
             } else if (rootType == TYPE_INPUT_METHOD) {
                 if (token.windowType != TYPE_INPUT_METHOD) {
-                    Slog.w(TAG_WM, "Attempted to add input method window with bad token "
-                            + attrs.token + ".  Aborting.");
                       return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
                 }
             } 
@@ -585,13 +550,11 @@ WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添�
 
 注释 1 处通过 displayContent 的 getWindowToken 方法得到 WindowToken。
 
-注释2 如果有父窗口就将父窗口的 type 赋值给 rootType，否则就将自己的 type 赋值给 rootType，也就是说，如果是子窗口，就需要使用与父窗口一样的检查规则，接着就会判断如果是应用窗口，或者是 TYPE_INPUT_METHOD、TYPE_WALLPAPER等类型时，就会返回WindowManagerGlobal.ADD_BAD_APP_TOKEN，表示这些类型必须需要有 token。通过前面筛选之后，最后会在注释3处隐式创建 WIndowToken。
+注释2 如果有父窗口就将父窗口的 type 赋值给 rootType，否则就将自己的 type 赋值给 rootType，接着进行筛选。通过前面筛选之后，最后会在注释3处隐式创建 WIndowToken。
 
-注释三处进行隐式创建 WindowToken，这说明我们添加窗口时是可以不向 WMS 提供 WindowToken 的，WindowToken 的隐式和显式创建是需要区分的，第四个参数 false 表示隐式创建。
+注释三处进行隐式创建 WindowToken，这说明我们添加窗口时是可以不向 WMS 提供 WindowToken 的，WindowToken 的隐式和显式创建是需要区分的，第四个参数 false 表示隐式创建。一般系统窗口都不需要添加 token，WMS 会隐式创建。
 
 接着就是 token 不为空的情况，会在注释 4 处判断是否位 `应用窗口`，如果是 应用窗口，就会讲 WindowToken 转换为针对于应用程序窗口的 AppWindowToken，然后再继续进行判断
-
-
 
 ##### part3
 
@@ -600,7 +563,7 @@ WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添�
 final WindowState win = new WindowState(this, session, client, token, parentWindow,
                     appOp[0], seq, attrs, viewVisibility, session.mUid,
                     session.mCanAddInternalSystemWindow);
-          //1  
+          //2  
 					if (win.mDeathRecipient == null) {
                 // Client has apparently died, so there is no reason to
                 // continue.
@@ -647,26 +610,11 @@ final WindowState win = new WindowState(this, session, client, token, parentWind
             boolean imMayMove = true;
 						//7，添加窗口
             win.mToken.addWindow(win);
-            if (type == TYPE_INPUT_METHOD) {
-                displayContent.setInputMethodWindowLocked(win);
-                imMayMove = false;
-            } else if (type == TYPE_INPUT_METHOD_DIALOG) {
-                displayContent.computeImeTarget(true /* updateImeTarget */);
-                imMayMove = false;
-            } else {
-                if (type == TYPE_WALLPAPER) {
-                    displayContent.mWallpaperController.clearLastWallpaperTimeoutTime();
-                    displayContent.pendingLayoutChanges |= FINISH_LAYOUT_REDO_WALLPAPER;
-                } else if ((attrs.flags&FLAG_SHOW_WALLPAPER) != 0) {
-                    displayContent.pendingLayoutChanges |= FINISH_LAYOUT_REDO_WALLPAPER;
-                } else if (displayContent.mWallpaperController.isBelowWallpaperTarget(win)) {
-                    displayContent.pendingLayoutChanges |= FINISH_LAYOUT_REDO_WALLPAPER;
-                }
-            }
+            
             ...
 ```
 
-在注释1 处创建了`WindowState`，保存了窗口的所有状态信息(例如 WMS ,Session，WindowToken等)，在 WMS 中它代表一个窗口。
+在注释1 处创建了`WindowState`，保存了窗口的所有状态信息(例如 WMS ,Session，WindowToken等)，在 WMS 中它代表一个窗口。WindowState 与窗口时一一对应的关系
 
 在注释2和注释3处判断请求添加窗口的客户端是否已经死亡，如果死亡则不会执行下面逻辑。
 

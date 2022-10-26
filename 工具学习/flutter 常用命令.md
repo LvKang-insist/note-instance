@@ -88,3 +88,72 @@ flutter packages pub publish --server=https://pub.dartlang.org
 
 
 
+```
+class SiftDataAdapter : BaseMultiItemQuickAdapter<SiftDataBean, BaseBindingViewHolder>(),
+    GridSpanSizeLookup {
+
+    companion object {
+        const val ITEM_TYPE_ONE = 1
+        const val ITEM_TYPE_TWO = 2
+        const val ITEM_TYPE_THREE = 3
+        const val ITEM_TYPE_FOUR = 4
+    }
+
+    init {
+        addItemType(ITEM_TYPE_ONE, R.layout.item_sift_one)
+        addItemType(ITEM_TYPE_TWO, R.layout.item_sift_two)
+        addItemType(ITEM_TYPE_THREE, R.layout.item_sift_three)
+        addItemType(ITEM_TYPE_FOUR, R.layout.item_sift_four)
+        setGridSpanSizeLookup(this)
+    }
+
+    override fun convert(holder: BaseBindingViewHolder, item: SiftDataBean) {
+
+    }
+
+    override fun getSpanSize(
+        gridLayoutManager: GridLayoutManager,
+        viewType: Int,
+        position: Int
+    ): Int {
+        return when (data[position].itemType) {
+            ITEM_TYPE_ONE -> 2
+            ITEM_TYPE_TWO -> 2
+            ITEM_TYPE_THREE -> 2
+            ITEM_TYPE_FOUR -> 2
+            else -> 2
+        }
+    }
+```
+
+```
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/dp_51"
+        >
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/dp_6"
+            android:textColor="@color/colorBlack"
+            android:textSize="16sp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/dp_1"
+            android:background="@color/divider2"
+            app:layout_constraintBottom_toBottomOf="parent" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</layout>
+```
