@@ -284,6 +284,8 @@ public int addToDisplayAsUser(IWindow window, int seq, WindowManager.LayoutParam
 
 需要注意的是，WMS 并不关系 View 的具体内容，他只关心各个应用显示的界面大小，层级值等，这些数据到包含在 WindowManager.LayoutParams 中。也就是上面的 atrs 属性。
 
+注意 `addWindow` 的第二个参数是一个 IWindow 类型，这是 App 暴露给 WMS 的抽象实例，在 ViewRootImp 中实例化，与 ViewRootImpl 一一对应，同事也是 WMS 向 App 端发送消息的 Binder 通道。
+
 从 WindowManager 到 WMS 的具体流程如下所示：
 
 <img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/202210221957806.png" alt="image-20221022195732745" style="zoom: 67%;" />
@@ -390,7 +392,6 @@ public int addWindow(Session session, IWindow client, int seq,
         ...
 				//3
         if (type >= FIRST_SUB_WINDOW && type <= LAST_SUB_WINDOW) {
-            //4，获取父窗口
             parentWindow = windowForClientLocked(null, attrs.token, false);
             if (parentWindow == null) {
                 ProtoLog.w(WM_ERROR, "Attempted to add window with token that is not a window: "
@@ -414,22 +415,32 @@ WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添�
 
 注释2 通过  displayId 来获得 Window 要添加到那个 DisplayContent，如果没有找到，则返回 `WindowManagerGlobal.ADD_INVALID_DISPLAY` 状态。**其中DisplayContent 用来描述一块屏幕**。
 
-注释3 判断 type 的窗口类型(100 - 1999)，如果为 true，表示是一个子 Window。
-
-注释4 attrs.token 是 IBinder 类型的对象，`windowForClientLocked` 中会根据 attrs.token 作为 key 值从 mWIndowMap 中获取到该子窗口的父窗口，如果父窗口为 null，或者父窗口也是子窗口，直接 return
+如下面代码，从 mRoot（RootWindowContainer） 对应的 DisplayContent，如果没有，则创建一个再返回，RootWindowContainer 是用来管理 DisplayContent 的。
 
 - ```java
-    final WindowState windowForClientLocked(Session session, IBinder client, boolean throwOnError) {
-        WindowState win = mWindowMap.get(client);
-        if (win == null) {
-            return null;
+    private DisplayContent getDisplayContentOrCreate(int displayId, IBinder token) {
+        if (token != null) {
+            final WindowToken wToken = mRoot.getWindowToken(token);
+            if (wToken != null) {
+                return wToken.getDisplayContent();
+            }
         }
-        if (session != null && win.mSession != session) {
-            return null;
+        DisplayContent displayContent = mRoot.getDisplayContent(displayId);
+        // Create an instance if possible instead of waiting for the ActivityManagerService to drive
+        // the creation.
+        if (displayContent == null) {
+            final Display display = mDisplayManager.getDisplay(displayId);
+    
+            if (display != null) {
+                displayContent = mRoot.createDisplayContent(display, null /* controller */);
+            }
         }
-        return win;
+    
+        return displayContent;
     }
     ```
+
+注释3 判断 type 的窗口类型(100 - 1999)，如果是子类型，必须要有父窗口，并且父窗口不能是子窗口类型
 
 ##### Part 2
 
@@ -439,16 +450,13 @@ WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添�
         //1
         WindowToken token = displayContent.getWindowToken(
                 hasParent ? parentWindow.mAttrs.token : attrs.token);
-        //2
         final int rootType = hasParent ? parentWindow.mAttrs.type : type;
 
         boolean addToastWindowRequiresToken = false;
 
+			  //2
         if (token == null) {
         				...
-                final IBinder binder = attrs.token != null ? attrs.token : client.asBinder();
-                final boolean isRoundedCornerOverlay =
-                        (attrs.privateFlags & PRIVATE_FLAG_IS_ROUNDED_CORNERS_OVERLAY) != 0;
            			//3
                 token = new WindowToken(this, binder, type, false, displayContent,
                         session.mCanAddInternalSystemWindow, isRoundedCornerOverlay);
@@ -467,13 +475,11 @@ WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添�
 						.....
 ```
 
-注释 1 处通过 displayContent 的 getWindowToken 方法得到 WindowToken。
+注释 1 处通过 displayContent 的 getWindowToken 方法得到父窗口的 WindowToken 或者是当前窗口的 WindowToken。RootType 也同样如此。
 
-注释2 如果有父窗口就将父窗口的 type 赋值给 rootType，否则就将自己的 type 赋值给 rootType，接着进行筛选。通过前面筛选之后，最后会在注释3处隐式创建 WIndowToken。
+注释2处如果 token 等于 null，并且不是应用窗口或者是其他类型的窗口，则窗口就是系统类型的了(例如 Toast)，就进行隐式创建 WindowToken，这说明我们添加窗口时是可以不向 WMS 提供 WindowToken 的，WindowToken 的隐式和显式创建是需要区分的，第四个参数 false 表示隐式创建。一般系统窗口都不需要添加 token，WMS 会隐式创建。例如 Toast 类型的床
 
-注释三处进行隐式创建 WindowToken，这说明我们添加窗口时是可以不向 WMS 提供 WindowToken 的，WindowToken 的隐式和显式创建是需要区分的，第四个参数 false 表示隐式创建。一般系统窗口都不需要添加 token，WMS 会隐式创建。
-
-接着就是 token 不为空的情况，会在注释 4 处判断是否位 `应用窗口`，如果是 应用窗口，就会讲 WindowToken 转换为针对于应用程序窗口的 AppWindowToken，然后再继续进行判断
+接着就是 token 不为空的情况，会在注释 4 处判断是否位 `应用窗口`，如果是 应用窗口，就会讲 WindowToken 转换为针对于应用程序窗口的 AppWindowToken，然后再继续进行判断。
 
 ##### part3
 
@@ -483,16 +489,11 @@ final WindowState win = new WindowState(this, session, client, token, parentWind
                     appOp[0], seq, attrs, viewVisibility, session.mUid,
                     session.mCanAddInternalSystemWindow);
           //2  
-					if (win.mDeathRecipient == null) {
-                // Client has apparently died, so there is no reason to
-                // continue.
-                Slog.w(TAG_WM, "Adding window client " + client.asBinder()
-                        + " that is dead, aborting.");
+					 if (win.mDeathRecipient == null) {
                 return WindowManagerGlobal.ADD_APP_EXITING;
             }
 						//3
             if (win.getDisplayContent() == null) {
-                Slog.w(TAG_WM, "Adding window to Display that has been removed.");
                 return WindowManagerGlobal.ADD_INVALID_DISPLAY;
             }
 
@@ -503,29 +504,10 @@ final WindowState win = new WindowState(this, session, client, token, parentWind
             win.setShowToOwnerOnlyLocked(mPolicy.checkShowToOwnerOnly(attrs));
 						//5
             res = displayPolicy.prepareAddWindowLw(win, attrs);
-           
             ....
-
-            win.attach();
 						//6
             mWindowMap.put(client.asBinder(), win);
-
-            win.initAppOpsState();
-
-            final boolean suspended = mPmInternal.isPackageSuspended(win.getOwningPackage(),
-                    UserHandle.getUserId(win.getOwningUid()));
-            win.setHiddenWhileSuspended(suspended);
-
-            final boolean hideSystemAlertWindows = !mHidingNonSystemOverlayWindows.isEmpty();
-            win.setForceHideNonSystemOverlayWindowIfNeeded(hideSystemAlertWindows);
-
-            final AppWindowToken aToken = token.asAppWindowToken();
-            if (type == TYPE_APPLICATION_STARTING && aToken != null) {
-                aToken.startingWindow = win;
-                if (DEBUG_STARTING_WINDOW) Slog.v (TAG_WM, "addWindow: " + aToken
-                        + " startingWindow=" + win);
-            }
-
+					
             boolean imMayMove = true;
 						//7，添加窗口
             win.mToken.addWindow(win);
@@ -547,30 +529,81 @@ final WindowState win = new WindowState(this, session, client, token, parentWind
 
 ##### 相关类
 
+- IWindow
+
+    App 端暴露给 WMS 的抽象实例，在 ViewRootImpl 中实例化，与 ViewRootImpl 一一对应，也是 WMS 和 APP 端交互的通道
+
+- RootWindowContainer
+
+    设备窗口层次结构的根，再 WMS 构造方法中被创建。负责管理 DisplayContent。
+
+- WindowState
+
+    WMS 端的窗口令牌，与窗口一一对应，是 WMS 管理窗口的重要依据，内部保存了窗口的所有状态信息
+
 - WindowToken
 
     WindowToken 主要有两个作用
 
     1. 可以理解为窗口令牌，当应用程序想要向 WMS 申请创建一个窗口，则需要向 WMS  出示有效的 WindowToken。并且窗口类型必须与所持有的 WindowToken 的类型一致。
 
-        从下面的代码中可以看到，在创建系统类型窗口时不需要提供有效的 Token，WMS 会隐式的创建一个 WindowToken，看起来谁都可以添加这个系统窗口，但是在 addWindow 方法一开始就调用 `mPolicy.checkAddPermission` 来检查权限，她要求客户端必须拥有 INTERNAL_SYSTEM_WINDOW 或者 SYSTEM_ALERT_WINDOW 权限才可以创建系统类型窗口。
+        从上面的代码中可以看到，在创建系统类型窗口时不需要提供有效的 Token，WMS 会隐式的创建一个 WindowToken，看起来谁都可以添加这个系统窗口，但是在 addWindow 方法一开始就调用 `mPolicy.checkAddPermission` 来检查权限，她要求客户端必须拥有 INTERNAL_SYSTEM_WINDOW 或者 SYSTEM_ALERT_WINDOW 权限才可以创建系统类型窗口。
 
     2. WindowToken 会将相同组件（例如 Activity）的窗口（WindowState）集合在一起，方便管理。
+    
+        至于为什么说会集合在一起，因为有些窗口时复用的同一个 token，例如 Activity 和 Dialog 就是复用的同一个 AppToken，Activity 中的 PopWindow 复用的是一个 IWindow 类型 Token，Toast 系统类型的窗口也可以看成 null，就算不是 null，WMS 也会强制创建一个隐式 token。
+    
+- DisplayContent
 
-##### 总结
+    如果说 WindowToken 按照窗口之间的逻辑将其分组，那么 DisplayContent 则根据窗口的显示位置将其分组。隶属于同一个 DisplayContent 的窗口会被显示在同一个屏幕中，每一个 DisplayContent 都对应一个唯一的 ID，在添加窗口的时候通过指定这个 ID 决定将被显示在那个屏幕中。
 
-addWindow 主要是做了下面四件事
+    DisplayContent 有一个隔离的概念，处于不同 DisplayContent 的两个窗口在布局，显示顺序以及动画处理上不会有任何的耦合。因此，就这几个方面来说，DisplayContent 就像是一个孤岛，所有这些操作都可以在内部执行。因此这个本来属于 WMS 全局操作的东西，变成了 DisplayContent 内部的操作了。
 
-1. 对所要添加的窗口进行检查，如果不满足一些条件，就不会执行下面逻辑
-2. WindowToken 的相关处理，有些窗口就必须要提供 WindowToken，有些则需要 WMS 隐式创建 WindowToken
-3. WindowState 的创建和相关处理，将 WIndowToken 与 WindowState 相关联
-4. 创建和配置 DisplayContent，完成创建添加到系统前的准备工作
+    另外，DisplayContent 由 RootWindowContainer 来管理，再添加窗口的最开始，就会根据传入的参数获取 DisplayContent 
 
+### 总结一下子
 
+通过上面的流程，App 到 WMS 注册窗口的流程就完了，WMS 为窗口创建了用来描述状态的 WindowState，接下来就会为新建的窗口显示次序，然后再去申请 Surface，才算是真正的分配了窗口。接下来还有一部分，后面再慢慢搞吧。
 
+这里对 WMS 的 addWindow  流程做一个总结 ：
 
+1. 首先检查权限
 
+2. 接着从 mRoot(RootWindowContainer)中获取 DisplayContent ，如果没有就会根据 `displayId` 创建一个新的。DisplayContent
 
+3. 接着就是 type 类型的判断，如果是子类型，就必须要获取到他的父窗口，
 
+4. 接着使用 DisplayContent 获取当前或者父窗口获取 token，如果为 null 就排除一下子窗口和其他的窗口，剩下的就是可以不用携带 token 的窗口，WMS 会隐式的创建窗口 token。如果不等于 null 就判断是应用窗口就将 token 转为 AppWindowToken，后面还有一大堆窗口判断，只要是不满足就直接 return。
 
+5. 类型啥的判断完成后，就会创建 WindowState，并且传入 WMS、IWindow、token 等。WindowState 里面保存了窗口的所有信息。WindowState 与窗口一一对应。
+
+6. 接着就执行调用了 WindowState 的 attache 、initAppOpsState 等方法，这些先暂时不说。
+
+    WindowState 创建完成后就会被添加到 mWindowMap 中，可以 IWindow 的 Binder 为 key，WindowState 为 value 添加进去。
+
+7. 最后就是 `win.mToken.addWindow(win)` ，这里的 mToken 就是上面 **第三步** 获取的 token，然后将 WindowState 添加到 WindowToken 中。因为 WindowToken 是可以复用的，所以这里的关系就是，每个 WindowToken 都会保存对应的 WindowState，而每个 WindowState 也都会都持有 WindowToekn。
+
+### 通过本文，你应该了解到
+
+- WindowManager 如何与 WMS 交互
+- WindowToken 到底是个啥东西，在什么情况下需要传，在啥情况下不用手动传，它的作用是什么。
+- DisplayContent 是用来干啥的，他是被谁管理，他自己又在管理者谁。本篇文章到最后也没太看懂如何使用 DisplayContent，所以到目前为止只需要知道他的作用就行了。
+- RootWindowContainer 到目前为止干了什么事。
+- 了解 WindowState 是个啥东西，与 WindowToken 的关系是咋样的。
+- WindowContainer 类，上面 `WindowToken`、`WindowState`、`RootWindowContainer`、`DisplayContent` 都是继承自 WindowContainer，至于这里为啥这么写，我也不太懂，慢慢再看呗。
+- ...
+
+### 最后
+
+到这里这篇文章也写完了，但是 WMS 的窗口管理 还有一部分没写，原因就是因为我也还没看懂，所以就先写到这里，等后面看懂了，学会了再写一篇。
+
+文章中写的也不一定全部是正确的，我本人也是自己学自己写，然后再慢慢的梳理，如果那些错了，或者是有任何问题可在下方评论，或者是直接私信我。
+
+### 参考资料
+
+[深入理解 Android 卷3 第四章](https://www.kancloud.cn/alex_wsc/android-deep3/416239)
+
+[WMS 窗口管理](https://www.jianshu.com/p/e00898609874)
+
+[皇叔解析WMS](https://juejin.cn/post/6844903502464942088)
 
