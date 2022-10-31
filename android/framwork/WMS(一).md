@@ -1,5 +1,7 @@
 ### 前言
 
+前段时间分析了 Window 的添加、更新和删除流程，也知晓了 Activity 、Dialog 和 Toast 中 Window 的创建过程，今天就接着上篇文章，看一下 WMS 的创建 以及WindowManager 添加 WIndow 后 WMS 是怎样进行操作的。[上篇文章点这里直达](https://juejin.cn/post/7076274407416528909#heading-25)；
+
 `WindowManagerService` 简称 WMS ，是系统的核心服务，主要分为四大部分，风别是 `窗口管理`，`窗口动画`,`输入系统中转站`,`Surface 管理` 。
 
 ### 了解 WMS
@@ -169,7 +171,10 @@ private void initPolicy() {
 }
 ```
 
-上面的和 WMS 的 main 方法类似，WindowManagerPolicy(简称 WMP) 是一个接口，init 的具体实现在 PhoneWindowManager(PWM) 中，并且通过上面代码我们知道，init 方法运行在 `android.ui`线程中。因此他的线程优先级要高于 `android.display` 线程，必须等 init 方法执行完成后，`android.display`线程才会被唤醒从而继续执行下面的代码。
+上面的和 WMS 的 main 方法类似，WindowManagerPolicy (简称 WMP) 是一个接口，init 的具体实现在 **PhoneWindowManager**(PWM) 中，并且通过上面代码我们知道，init 方法运行在 `android.ui`线程中。因此他的线程优先级要高于 `android.display` 线程，必须等 init 方法执行完成后，`android.display`线程才会被唤醒从而继续执行下面的代码。
+
+WindowManagerPolicy  用来定义一个窗口策略所要遵循的通用规范，，并提供了 WindowManager 所有的特定 UI 行为
+他的具体实现类为 PhoneWindowManager
 
 在上面的文章中，一共提供了三个线程，分别是 `system_server`，`android.display` ，`android.ui`，他们之间的关系如下图所示：
 
@@ -177,7 +182,7 @@ private void initPolicy() {
 
 `system_server` 线程中会调用 main 方法，mian 方法中会创建 WMS，创建的过程实在 `android.display` 线程中，他的优先级会高一些，创建完成后才会唤醒处于 `system_server` 线程。
 
-WMS 创建完成后会调用 onInitReady 中的 initPolicy 方法，该方法中会调用 PWM 的 init() 方法，init 方法调用完成之后就会唤醒 `system_server` 线程。
+WMS 创建完成后会调用 onInitReady 中的 initPolicy 方法，该方法中会调用 PWM 的 init() 方法，init 方法调用完成之后就会唤醒 `system_server` 线程。init 方法运行中 `android.ui` 线程中。
 
 之后就会接着执行 `system_server` 中的代码，例如 displayReady 等。
 
