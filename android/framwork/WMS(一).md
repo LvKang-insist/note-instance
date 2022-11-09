@@ -21,7 +21,10 @@ WMS 的职责可以总结为下图：
 
 WMS 是在 `SystemServer` 内部启动的
 
+Android 系统在启动的时候，会启动两个重要的进程，一个是 Aygote 进程，两一个是由 Zygote 进程 fork 出来的 system_server 进程，SystemServer 会启动我们在系统中所需要的一系列 Service。
+
 ```java
+//#SystemServer.java
 private void startOtherServices() {
  	  //.....
   
