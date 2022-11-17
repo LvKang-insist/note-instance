@@ -485,7 +485,9 @@ WMS 的 `addWindow` 方法返回的是 `addWindow` 的各种状态，例如 添�
 
 注释 1 处通过 displayContent 的 getWindowToken 方法得到父窗口的 WindowToken 或者是当前窗口的 WindowToken。RootType 也同样如此。
 
-注释2处如果 token 等于 null，并且不是应用窗口或者是其他类型的窗口，则窗口就是系统类型的了(例如 Toast)，就进行隐式创建 WindowToken，这说明我们添加窗口时是可以不向 WMS 提供 WindowToken 的，WindowToken 的隐式和显式创建是需要区分的，第四个参数 false 表示隐式创建。一般系统窗口都不需要添加 token，WMS 会隐式创建。例如 Toast 类型的床
+注释2处如果 token 等于 null，并且不是应用窗口或者是其他类型的窗口，则窗口就是系统类型的了(例如 Toast)，就进行隐式创建 WindowToken，这说明我们添加窗口时是可以不向 WMS 提供 WindowToken 的，WindowToken 的隐式和显式创建是需要区分的，第四个参数 false 表示隐式创建。一般系统窗口都不需要添加 token，WMS 会隐式创建。例如 Toast 类型的窗口。
+
+注释3创建了 WindowToken 对象，当该对象创建出来之后就说明有一个新的 Window 诞生了，**在 WindowToken 构造方法中，会调用 `onDisplayChanged` 将 token 添加到 `DisplayContent` 中。**
 
 接着就是 token 不为空的情况，会在注释 4 处判断是否位 `应用窗口`，如果是 应用窗口，就会讲 WindowToken 转换为针对于应用程序窗口的 AppWindowToken，然后再继续进行判断。
 
@@ -549,6 +551,14 @@ final WindowState win = new WindowState(this, session, client, token, parentWind
 
     WMS 端的窗口令牌，与窗口一一对应，是 WMS 管理窗口的重要依据，内部保存了窗口的所有状态信息
 
+- DisplayContent
+
+    如果说 WindowToken 按照窗口之间的逻辑将其分组，那么 DisplayContent 则根据窗口的显示位置将其分组。隶属于同一个 DisplayContent 的窗口会被显示在同一个屏幕中，每一个 DisplayContent 都对应一个唯一的 ID，在添加窗口的时候通过指定这个 ID 决定将被显示在那个屏幕中。
+
+    DisplayContent 有一个隔离的概念，处于不同 DisplayContent 的两个窗口在布局，显示顺序以及动画处理上不会有任何的耦合。因此，就这几个方面来说，DisplayContent 就像是一个孤岛，所有这些操作都可以在内部执行。因此这个本来属于 WMS 全局操作的东西，变成了 DisplayContent 内部的操作了。
+
+    另外，DisplayContent 由 RootWindowContainer 来管理，再添加窗口的最开始，就会根据传入的参数获取 DisplayContent 
+
 - WindowToken
 
     WindowToken 主要有两个作用
@@ -561,13 +571,74 @@ final WindowState win = new WindowState(this, session, client, token, parentWind
     
         至于为什么说会集合在一起，因为有些窗口时复用的同一个 token，例如 Activity 和 Dialog 就是复用的同一个 AppToken，Activity 中的 PopWindow 复用的是一个 IWindow 类型 Token，Toast 系统类型的窗口也可以看成 null，就算不是 null，WMS 也会强制创建一个隐式 token。
     
-- DisplayContent
-
-    如果说 WindowToken 按照窗口之间的逻辑将其分组，那么 DisplayContent 则根据窗口的显示位置将其分组。隶属于同一个 DisplayContent 的窗口会被显示在同一个屏幕中，每一个 DisplayContent 都对应一个唯一的 ID，在添加窗口的时候通过指定这个 ID 决定将被显示在那个屏幕中。
-
-    DisplayContent 有一个隔离的概念，处于不同 DisplayContent 的两个窗口在布局，显示顺序以及动画处理上不会有任何的耦合。因此，就这几个方面来说，DisplayContent 就像是一个孤岛，所有这些操作都可以在内部执行。因此这个本来属于 WMS 全局操作的东西，变成了 DisplayContent 内部的操作了。
-
-    另外，DisplayContent 由 RootWindowContainer 来管理，再添加窗口的最开始，就会根据传入的参数获取 DisplayContent 
+    **构造方法**
+    
+    ```java
+    WindowToken(WindowManagerService service, IBinder _token, int type, boolean persistOnEmpty,
+            DisplayContent dc, boolean ownerCanManageAppTokens, boolean roundedCornerOverlay) {
+        super(service);
+        token = _token;
+        windowType = type;
+        mPersistOnEmpty = persistOnEmpty;
+        mOwnerCanManageAppTokens = ownerCanManageAppTokens;
+        mRoundedCornerOverlay = roundedCornerOverlay;
+        onDisplayChanged(dc);
+    }
+    @Override
+    void onDisplayChanged(DisplayContent dc) {
+      dc.reParentWindowToken(this);
+      super.onDisplayChanged(dc);
+    }
+    ##DisplayContent.java
+    void reParentWindowToken(WindowToken token) {
+      final DisplayContent prevDc = token.getDisplayContent();
+      if (prevDc == this) {
+        return;
+      }
+      if (prevDc != null) {
+        if (prevDc.mTokenMap.remove(token.token) != null && token.asAppWindowToken() == null) {
+          token.getParent().removeChild(token);
+        }
+        if (prevDc.mLastFocus == mCurrentFocus) {
+          prevDc.mLastFocus = null;
+        }
+      }
+      addWindowToken(token.token, token);
+    }
+      private void addWindowToken(IBinder binder, WindowToken token) {
+        final DisplayContent dc = mWmService.mRoot.getWindowTokenDisplay(token);
+        if (dc != null) {
+          throw new IllegalArgumentException
+        }
+        if (binder == null) {
+          throw new IllegalArgumentException
+        }
+        if (token == null) {
+          throw new IllegalArgumentException(
+        }
+        mTokenMap.put(binder, token);
+        if (token.asAppWindowToken() == null) {
+          // Add non-app token to container hierarchy on the display. App tokens are added through
+          // the parent container managing them (e.g. Tasks).
+          switch (token.windowType) {
+            case TYPE_WALLPAPER:
+              mBelowAppWindowsContainers.addChild(token);
+              break;
+            case TYPE_INPUT_METHOD:
+            case TYPE_INPUT_METHOD_DIALOG:
+              mImeWindowsContainers.addChild(token);
+              break;
+            default:
+              mAboveAppWindowsContainers.addChild(token);
+              break;
+          }
+        }
+    }
+    ```
+    
+    在构造方法中调用 onDisplayChanged 对窗口进行更新，在 reParentWindowToken 中，token 已经绑定过当前 DisplayContent 并且是当前的，就没必要进行添加。然后就会从 mTokenMap 中进行移除，接着讲 token 从 父 WindowContainer 中移除出来。
+    
+    `addWindowToken` 中 将 token 添加到 `mTonkenMap` 中
 
 ### 总结一下子
 
