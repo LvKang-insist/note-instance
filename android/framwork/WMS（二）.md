@@ -90,3 +90,4 @@ protected boolean isFirstChildWindowGreaterThanSecond(WindowState newWindow,
 
 可以看出来上面都是非子窗口的逻辑，在添加的时候会根据 mBaseLayer 去不断地对比，直到找到一个大于等于的层级添加到上面。
 
+通过上篇文章和上面的分析，我们可以知道，在创建了 `WindowToken` 之后，
