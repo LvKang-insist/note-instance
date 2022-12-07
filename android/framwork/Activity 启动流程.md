@@ -559,7 +559,7 @@ boolean realStartActivityLocked(ActivityRecord r, WindowProcessController proc,
             r.createFixedRotationAdjustmentsIfNeeded(), r.shareableActivityToken,
             r.getLaunchedFromBubble()));
 
-     // 设置所需的最终状态
+     // 生命周期对象
      final ActivityLifecycleItem lifecycleItem;
      if (andResume) {
          lifecycleItem = ResumeActivityItem.obtain(isTransitionForward);
@@ -573,6 +573,237 @@ boolean realStartActivityLocked(ActivityRecord r, WindowProcessController proc,
      mService.getLifecycleManager().scheduleTransaction(clientTransaction);
 
     return true;
+}
+```
+
+上面代码的核心就是创建事务实例，然后来启动 Activity 。
+
+ClientTransaction 是一个容器，里面包含了一些列的消息，这些消息会被发送到客户端，这些消息包括了一系列的回调和一个最终的生命周期状态。
+
+ActivityLifecycleItem 用来请求 Activity 应该到达那个生命周期。
+
+ClientLifecycleManager 用来执行事务
+
+接着上面的代码往下走，就到了 `scheduleTransaction()`：
+
+```java
+void scheduleTransaction(ClientTransaction transaction) throws RemoteException {
+    // AIDL 接口，在客户端被实现，也就是 app 中
+    final IApplicationThread client = transaction.getClient();
+    //执行事务
+    transaction.schedule();
+    if (!(client instanceof Binder)) {
+        transaction.recycle();
+    }
+}
+```
+
+```java
+public void schedule() throws RemoteException {
+    mClient.scheduleTransaction(this);
+}
+```
+
+mClient 就是 IApplicationThread 的实例，这里是一个 IPC 调用，会直接调用到 App 进程中，并传入了 this，也就是 ClientTransaction 对象。
+
+IApplicationThread 是 ApplicationThread 所实现的，他是 ActivityThread 的内部类：
+
+```java
+private class ApplicationThread extends IApplicationThread.Stub {
+    @Override
+    public void scheduleTransaction(ClientTransaction transaction) throws RemoteException {
+        ActivityThread.this.scheduleTransaction(transaction);
+    }
+}
+```
+
+上面调用到了 ActivityThread 的父类 ClientTransactionHandler 中:
+
+```java
+void scheduleTransaction(ClientTransaction transaction) {
+    transaction.preExecute(this);//处理
+  	//发送消息
+    sendMessage(ActivityThread.H.EXECUTE_TRANSACTION, transaction);
+}
+```
+
+```kotlin
+//创建的时候传入了 ActivityThread 实例
+private final TransactionExecutor mTransactionExecutor = new TransactionExecutor(this);
+
+#ActivityThread$H
+case EXECUTE_TRANSACTION:
+    final ClientTransaction transaction = (ClientTransaction) msg.obj;
+    mTransactionExecutor.execute(transaction);
+    if (isSystem()) {
+        transaction.recycle();
+    }
+    break;
+```
+
+上面代码中通过 `TransactionExecutor` 来执行事务:
+
+```java
+public void execute(ClientTransaction transaction) {
+    //执行回调
+    executeCallbacks(transaction);
+    //处理生命周期状态
+    executeLifecycleState(transaction);
+    mPendingActions.clear();
+    if (DEBUG_RESOLVER) Slog.d(TAG, tId(transaction) + "End resolving transaction");
+}
+
+//处理生命周期状态
+private void executeLifecycleState(ClientTransaction transaction) {
+    final ActivityLifecycleItem lifecycleItem = transaction.getLifecycleStateRequest();
+    if (lifecycleItem == null) {
+        // No lifecycle request, return early.
+        return;
+    }
+
+    final IBinder token = transaction.getActivityToken();
+    final ActivityClientRecord r = mTransactionHandler.getActivityClient(token);
+    if (DEBUG_RESOLVER) {
+        Slog.d(TAG, tId(transaction) + "Resolving lifecycle state: "
+                + lifecycleItem + " for activity: "
+                + getShortActivityName(token, mTransactionHandler));
+    }
+
+    if (r == null) {
+        // Ignore requests for non-existent client records for now.
+        return;
+    }
+
+    // 切换到对应的生命周期
+    cycleToPath(r, lifecycleItem.getTargetState(), true /* excludeLastState */, transaction);
+
+    // Execute the final transition with proper parameters.
+    lifecycleItem.execute(mTransactionHandler, token, mPendingActions);
+    lifecycleItem.postExecute(mTransactionHandler, token, mPendingActions);
+}
+
+private void cycleToPath(ActivityClientRecord r, int finish, boolean excludeLastState,
+        ClientTransaction transaction) {
+    final int start = r.getLifecycleState();
+
+    final IntArray path = mHelper.getLifecyclePath(start, finish, excludeLastState);
+    performLifecycleSequence(r, path, transaction);
+}
+
+//执行生命周期状态
+private void performLifecycleSequence(ActivityClientRecord r, IntArray path,
+        ClientTransaction transaction) {
+    final int size = path.size();
+    for (int i = 0, state; i < size; i++) {
+        state = path.get(i);
+        switch (state) {
+            case ON_CREATE:
+                mTransactionHandler.handleLaunchActivity(r, mPendingActions,
+                        null /* customIntent */);
+                break;
+            case ON_START:
+                mTransactionHandler.handleStartActivity(r, mPendingActions,
+                        null /* activityOptions */);
+                break;
+            case ON_RESUME:
+                mTransactionHandler.handleResumeActivity(r, false /* finalStateRequest */,
+                        r.isForward, "LIFECYCLER_RESUME_ACTIVITY");
+                break;
+            case ON_PAUSE:
+                mTransactionHandler.handlePauseActivity(r, false /* finished */,
+                        false /* userLeaving */, 0 /* configChanges */, mPendingActions,
+                        "LIFECYCLER_PAUSE_ACTIVITY");
+                break;
+            case ON_STOP:
+                mTransactionHandler.handleStopActivity(r, 0 /* configChanges */,
+                        mPendingActions, false /* finalStateRequest */,
+                        "LIFECYCLER_STOP_ACTIVITY");
+                break;
+            case ON_DESTROY:
+                mTransactionHandler.handleDestroyActivity(r, false /* finishing */,
+                        0 /* configChanges */, false /* getNonConfigInstance */,
+                        "performLifecycleSequence. cycling to:" + path.get(size - 1));
+                break;
+            case ON_RESTART:
+                mTransactionHandler.performRestartActivity(r, false /* start */);
+                break;
+            default:
+                throw new IllegalArgumentException("Unexpected lifecycle state: " + state);
+        }
+    }
+}
+```
+
+由于是新启动的 Activity，所以最开始执行的是 `ON_CREATE` 状态，也就是  `handleLaunchActivity` 方法,  而 mTransactionHandler 则是从构造方法中传入的，所以这里调用你的就是 ActivityThread 中的方法。
+
+```
+public Activity handleLaunchActivity(ActivityClientRecord r,
+        PendingTransactionActions pendingActions, Intent customIntent) {
+    
+	  //获取 Activity 的实例
+    final Activity a = performLaunchActivity(r, customIntent);
+
+    return a;
+}
+```
+
+```java
+private Activity performLaunchActivity(ActivityClientRecord r, Intent customIntent) {
+    ActivityInfo aInfo = r.activityInfo;
+ 
+
+    ContextImpl appContext = createBaseContextForActivity(r);
+    Activity activity = null;
+    try {
+        //反射创建 Activity 
+        java.lang.ClassLoader cl = appContext.getClassLoader();
+        activity = mInstrumentation.newActivity(
+                cl, component.getClassName(), r.intent);
+        ......
+    } catch (Exception e) {
+        if (!mInstrumentation.onException(activity, e)) {
+            throw new RuntimeException(
+                "Unable to instantiate activity " + component
+                + ": " + e.toString(), e);
+        }
+    }
+
+    try {
+        //如果没有 Application ，则进行创建
+        Application app = r.packageInfo.makeApplication(false, mInstrumentation);
+
+        ......
+        if (activity != null) {
+            Window window = null;
+            if (r.mPendingRemoveWindow != null && r.mPreserveWindow) {
+                window = r.mPendingRemoveWindow;
+                r.mPendingRemoveWindow = null;
+                r.mPendingRemoveWindowManager = null;
+            }
+ 						....
+            // 加载资源
+            appContext.getResources().addLoaders(
+                    app.getResources().getLoaders().toArray(new ResourcesLoader[0]));
+            // 调用 attach 方法
+            activity.attach(appContext, this, getInstrumentation(), r.token,
+                    r.ident, app, r.intent, r.activityInfo, title, r.parent,
+                    r.embeddedID, r.lastNonConfigurationInstances, config,
+                    r.referrer, r.voiceInteractor, window, r.configCallback,
+                    r.assistToken, r.shareableActivityToken);
+
+            //回调 onCreate 方法
+            if (r.isPersistable()) {
+                mInstrumentation.callActivityOnCreate(activity, r.state, r.persistentState);
+            } else {
+                mInstrumentation.callActivityOnCreate(activity, r.state);
+            }
+           
+        }
+        //设置当前状态
+        r.setState(ON_CREATE);
+				......
+    } 
+    return activity;
 }
 ```
 
