@@ -6,7 +6,21 @@
 
 本文基于 Android 12 版本源码，从 `startActivity` 作为切入点，对整个启动流程进行分析。
 
-### 客户端
+### Activity 启动方式
+
+启动一个 Activity，通常有两种情况，一种是在应用内部启动 Activity，另一种是 Launcher 启动。
+
+- 应用内启动
+
+    通过 startActivity 来启动 Activity
+
+- Launcher 进程启动
+
+    Launcher 就是我们桌面程序，当系统开机后， Launcher 也随之被启动，然后将已经安装的 app 显示在桌面上，等到点击某一个 app 的时候就会 fock 一个新的进程，然后启动 Activity
+
+
+
+### 一，Activity -> ATMS 
 
 众所周知，一般情况下Activity 的启动方式有下面种：
 
@@ -112,7 +126,7 @@ public ActivityResult execStartActivity(
     try {
         intent.migrateExtraStreamToClipData(who);
         intent.prepareToLeaveProcess(who);
-        //通过 Binder 调用 AMS 启动 Activity
+        //通过 Binder 调用 ATMS 启动 Activity
         int result = ActivityTaskManager.getService().startActivity(whoThread,
                 who.getOpPackageName(), who.getAttributionTag(), intent,
                 intent.resolveTypeIfNeeded(who.getContentResolver()), token,
@@ -141,11 +155,15 @@ private static final Singleton<IActivityTaskManager> IActivityTaskManagerSinglet
         };
 ```
 
+我们可以用一张图来表示上述的流程：
+
+<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202212211646368.png" alt="image-20221221164643149" style="zoom:50%;" />
+
 上面代码中通过 `getService` 获取到 Binder 对象，然后将 Binder 转成 AIDL 接口所属的类型，接着就可以调用 AIDL 中的方法与服务端进行通信了。
 
-最后我们可以看到的是调用的是 ATMS 中的 `startActivity()` 方法，我们可以用一张图来表示上述的流程：
+接着调用 ATMS 中的 `startActivity()` 方法发起启动 Activity 请求，获得启动结果 result。在调用 `checkStartActivityResult` 方法，传入 result，来判断能否启动 Activity，不能启动就会抛出异常，例如 activity 未在 manifest 中声明等。
 
-### 服务端
+### 二 、ATMS 
 
 通过上面的代码可以看出已经调用到了系统的 ATMS 当中，我们来看一下具体的流程
 
@@ -180,6 +198,7 @@ private int startActivityAsUser(IApplicationThread caller, String callingPackage
         @Nullable String callingFeatureId, Intent intent, String resolvedType,
         IBinder resultTo, String resultWho, int requestCode, int startFlags,
         ProfilerInfo profilerInfo, Bundle bOptions, int userId, boolean validateIncomingUser) {
+    //检查调用者权限
     userId = getActivityStartController().checkTargetUser(userId, validateIncomingUser,
             Binder.getCallingPid(), Binder.getCallingUid(), "startActivityAsUser");
     // TODO: Switch to user app stacks here.
@@ -316,7 +335,7 @@ private int executeRequest(Request request) {
 }
 ```
 
-上面代码中回进行一下校验和判断权限等，后面就会创建 `ActivityRecord` ，每个 Activity 都会对应一个 `ActivityRecord` 对象，接着就会调用 `startActivityUnchecked` 继续进行启动流程
+上面代码中会进行一些校验和判断权限，包括进程检查，intent检查，权限检查等，后面就会创建 `ActivityRecord` ，每个 Activity 都会对应一个 `ActivityRecord` 对象，接着就会调用 `startActivityUnchecked` 方法对要启动的 Activity 做任务栈管理。
 
 ```java
 #ActivityStarter.java
@@ -433,10 +452,6 @@ int startActivityInner(final ActivityRecord r, ActivityRecord sourceRecord,
 
 在为 Activity 准备好 Task 栈之后，调用了 mRootWindowContainer.resumeFocuredTasksTopActivities 方法。
 
-___
-
-
-
 ```java
 #RootWindowContainer.java
 boolean resumeFocusedTasksTopActivities(
@@ -450,10 +465,6 @@ boolean resumeFocusedTasksTopActivities(
     return result;
 }
 ```
-
-___
-
-
 
 ```java
 #Task.java
@@ -503,10 +514,6 @@ private boolean resumeTopActivityInnerLocked(ActivityRecord prev, ActivityOption
 }
 ```
 
-___
-
-
-
 ```java
 #ActivityTaskSupervisor.java
 void startSpecificActivity(ActivityRecord r, boolean andResume, boolean checkConfig) {
@@ -533,9 +540,7 @@ void startSpecificActivity(ActivityRecord r, boolean andResume, boolean checkCon
 
 ```
 
-#### 进程存在
-
-如果进程存在，则执行此方法
+如果进程不存在，则会创建进程，如果进程存在，则执行此方法
 
 ```java
 boolean realStartActivityLocked(ActivityRecord r, WindowProcessController proc,
@@ -605,6 +610,10 @@ public void schedule() throws RemoteException {
 ```
 
 mClient 就是 IApplicationThread 的实例，这里是一个 IPC 调用，会直接调用到 App 进程中，并传入了 this，也就是 ClientTransaction 对象。
+
+
+
+### 三、ActivityThread
 
 IApplicationThread 是 ApplicationThread 所实现的，他是 ActivityThread 的内部类：
 
