@@ -2,8 +2,6 @@
 
 `Activity` 类是 android 应用的关键组件，在日常开发中，绝对少不了组件。既然用了这么久，你知道他的启动流程🐴？作为一个应用层开发者，大多数人可能觉得学习这些对日常开发可能没有太大帮助。但是多了解一下 framework 的代码还是很有必要的，了解系统组件机制，对于一些问题我们也能快速的定位找到问题的所在点，并且在面试的时候也是一个加分项。
 
-如果你对 Activity 启动流程不懂或者也是一知半解的可以读一下这篇文章，说不定可以学到一些东西。
-
 本文基于 Android 12 版本源码，从 `startActivity` 作为切入点，对整个启动流程进行分析。
 
 ### Activity 启动方式
@@ -18,7 +16,7 @@
 
     Launcher 就是我们桌面程序，当系统开机后， Launcher 也随之被启动，然后将已经安装的 app 显示在桌面上，等到点击某一个 app 的时候就会 fock 一个新的进程，然后启动 Activity
 
-
+这篇文章主要来看一下应用内启动 Activity 是一个怎样的流程
 
 ### 一，Activity -> ATMS 
 
@@ -26,7 +24,6 @@
 
 - startActivity(Intent intent)：直接启动一个 Activity
 - startActivityForResult(Intent intent, int requestCode)：带返回值的启动方式，这种启动方式已经被官方所废弃，取而代之的是 `registerForActivityResult(contract, mActivityResultRegistry, callback)`
-- registerForActivityResult(contract, mActivityResultRegistry, callback)
 
 我们从 startActivity 来一步步往下看：
 
@@ -157,7 +154,7 @@ private static final Singleton<IActivityTaskManager> IActivityTaskManagerSinglet
 
 我们可以用一张图来表示上述的流程：
 
-<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202212211646368.png" alt="image-20221221164643149" style="zoom:50%;" />
+<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202212211646368.png" alt="image-20221221164643149" style="zoom: 67%;" />
 
 上面代码中通过 `getService` 获取到 Binder 对象，然后将 Binder 转成 AIDL 接口所属的类型，接着就可以调用 AIDL 中的方法与服务端进行通信了。
 
@@ -269,10 +266,6 @@ static class DefaultFactory implements Factory {
 
 可以看到，默认的工厂在提供了一个容量为 3 的同步缓存池来缓存 ActivityStarter 对象，该对象创建完成之后，该对象创建完成之后，AMTS 就会将接下来启动 Activity 的操作交给 ActivityStarter 来完成。
 
-___
-
-
-
 ```java
 #ActivityStarter.java
 //根据前面传入的参数解析一下必要的信息，并开始启动 Activity
@@ -294,9 +287,7 @@ int execute() {
 ```java
 #ActivityStarter.java
 private int executeRequest(Request request) {
-  
     .......
-  
   	//检测Activity启动的权限
     boolean abort = !mSupervisor.checkStartAnyActivityPermission(intent, aInfo, 							resultWho,requestCode, callingPid, callingUid, callingPackage, 										callingFeatureId,request.ignoreTargetSecurity, inTask != null, 										callerApp, resultRecord, resultRootTask);
     abort |= !mService.mIntentFirewall.checkStartActivity(intent, callingUid,
@@ -304,7 +295,6 @@ private int executeRequest(Request request) {
     abort |= !mService.getPermissionPolicyInternal().checkStartActivity(intent, callingUid,
             callingPackage);
 
-   
     final ActivityRecord r = new ActivityRecord.Builder(mService)
             .setCaller(callerApp)
             .setLaunchedFromPid(callingPid)
@@ -611,11 +601,7 @@ public void schedule() throws RemoteException {
 
 mClient 就是 IApplicationThread 的实例，这里是一个 IPC 调用，会直接调用到 App 进程中，并传入了 this，也就是 ClientTransaction 对象。
 
-
-
-### 三、ActivityThread
-
-IApplicationThread 是 ApplicationThread 所实现的，他是 ActivityThread 的内部类：
+IApplicationThread 是 ApplicationThread 所实现的，**他是 ActivityThread 的内部类**：
 
 ```java
 private class ApplicationThread extends IApplicationThread.Stub {
@@ -626,7 +612,15 @@ private class ApplicationThread extends IApplicationThread.Stub {
 }
 ```
 
-上面调用到了 ActivityThread 的父类 ClientTransactionHandler 中:
+我们用一张图来描述一下上面的流程
+
+<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202212221544928.png" alt="image-20221222154413841" style="zoom:50%;" />
+
+在上面代码中检查 intent 以及各种权限，并且会获取启动模式，设置启动 Activity 的Task，最后判断 Activity 所在的进程是否存活，如果不存在则创建，如果存在则会通过 IPC 回调到 ApplicationThread 中去。
+
+### 三、ActivityThread
+
+通过上面，我们知道了启动 Activity 最终有回调到 ApplicationThread，而它又是 ActivityThread 的子类。所以 上面代码最终调用到了 ActivityThread 的父类 ClientTransactionHandler 中:
 
 ```java
 void scheduleTransaction(ClientTransaction transaction) {
@@ -745,7 +739,8 @@ private void performLifecycleSequence(ActivityClientRecord r, IntArray path,
 
 由于是新启动的 Activity，所以最开始执行的是 `ON_CREATE` 状态，也就是  `handleLaunchActivity` 方法,  而 mTransactionHandler 则是从构造方法中传入的，所以这里调用你的就是 ActivityThread 中的方法。
 
-```
+```java                  
+#ActivityThread.java
 public Activity handleLaunchActivity(ActivityClientRecord r,
         PendingTransactionActions pendingActions, Intent customIntent) {
     
@@ -757,9 +752,9 @@ public Activity handleLaunchActivity(ActivityClientRecord r,
 ```
 
 ```java
+#ActivityThread.java
 private Activity performLaunchActivity(ActivityClientRecord r, Intent customIntent) {
     ActivityInfo aInfo = r.activityInfo;
- 
 
     ContextImpl appContext = createBaseContextForActivity(r);
     Activity activity = null;
@@ -816,5 +811,33 @@ private Activity performLaunchActivity(ActivityClientRecord r, Intent customInte
 }
 ```
 
-#### 进程不存在
+回调到 ActivityThread 后，会发送一个 EXECUTE_TRANSACTION 消息，处理 system_server 传过来的 ClientTransaction。
 
+具体的处理是在 TransactionExecutor 的 execute 方法中完成的，在里面会先执行各种回调，然后处理并切换到对应的生命周期。在根据对应的什么周期执行对应的方法。由于这里是新建的 aCTIVITY  ，所以状态是 ON_CREATE，就会执行 handleLaunchActivity 方法。
+
+接着就会调用 performLaunchActivity 创建 Activity 的实例，调用 attach 初始化 activity，最后回调 activity 中的 onCreate 方法。
+
+### 总结一下流程
+
+1. 调用 Activity 的 startActivity 方法来启动目标 Activity
+2. 接着就会调用到 Instrunmentation 的 execStartActivity 方法，通过获取 ATMS 的 binder 代理对象，然后调用到 ATMS 的 startActivity 中去
+3. 调用到 ATMS 中后，会执行到`ActivityStarter` 的 execute 方法，内部最终执行到了 executeRequest ，接着就会进行一些校验和判断权限，包括进程检查，intent检查，权限检查等，后面就会创建 `ActivityRecord` ，用来保存 Activity 的相关信息，
+4. 然后就会根据启动模式计算 flag ，设置启动 Activity 的 Task 栈。
+5. 在 ActivityTaskSupervisor 中检查要启动的 Activity 进程是否存在，存在则向客户端进程 ApplicationThread 回调启动 Activity，否则就创建进程。
+6. 会调到 ActivityThread 后在 TransactionExecute 中开始执行system_server回调回来的事务，处理各种回调，切换到对应的生命周期
+7. 最后又回调到 ActivityThread 的 handleLaunchActivity 来启动 Activity。在其中调用了 performLaunchActivity 方法。
+8. 在 performLaunchActivity 中通过反射创建 Activity 实例，如果没有 Application 则先进行创建，然后再调用Activity 的 attach 方法进行初始化，最后回调 activity 的 onCreate 方法。
+
+### 参考
+
+[Activity 启动流程](https://www.jianshu.com/p/56023d8902ee)
+
+[Android 深入研究之 ✨ Activity启动流程](https://juejin.cn/post/6976795559755513863)
+
+[ramework | Activity启动流程(android-31)](https://juejin.cn/post/7129778558469144613)
+
+
+
+### 最后
+
+文章到这里就结束了，本文主要是分析了一下应用内 Activity 的启动过程，由于我对整个启动的细节也不是非常了解，所以文章中可能有一些错误的地方，如果有还请指出，谢谢。如果对你有用请用你发财的小手点个赞！
