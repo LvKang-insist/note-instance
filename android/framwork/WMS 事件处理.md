@@ -28,7 +28,7 @@ WMS 本身的主要职责就是 Window(窗口) 管理等，具体的如下图。
 
 这个应该是我们最熟悉的了，一般情况下，输入事件最终都会交给 View 进行处理。
 
-### IMS 的创建与启动
+### IMS 的创建和启动
 
 http://aospxref.com/android-12.0.0_r3/xref/frameworks/base/services/core/jni/com_android_server_input_InputManagerService.cpp
 
@@ -128,11 +128,11 @@ sp<InputReaderInterface> createInputReader(const sp<InputReaderPolicyInterface>&
 
 InputManager 构造方法中：
 
-1. 创建InputDispatcher ，该类主要用于对原始时间的分发，传递给 WMS
+1. 创建InputDispatcher ，该类主要用于对原始事件的分发，传递给 WMS
 
 2. 创建 InputReader，使用智能指针创建 EventHub 并传入。inputreader 会不断的读取 EventHub 中的原始信息进行加工并交给 InputDispatcher ，InputDispatcher 中保存了 Window 的信息（WMS 会将窗口的信息实时更新到 InputDispatcher 中），可以将事件信息派发到合适的窗口，InputReader 和 InputDispatcher 都是耗时操作，会在单独线程中执行。
 
-    EventHub 通过 Linux 内核的 Notify 与 Epoll 机制监听设备节点，通过 EventHub 的 getEvent 函数读取设备节点的增删事件和原始输入事件。
+    **EventHub 通过 Linux 内核的 Notify 与 Epoll 机制监听设备节点，通过 EventHub 的 getEvent 函数读取设备节点的增删事件和原始输入事件。**
 
 **总结一下**
 
@@ -187,218 +187,447 @@ status_t InputManager::start() {
 }
 ```
 
-注释一调用了 IputDispatcher 的 start 方法，注释2 调用了 InputReader 的 start 方法
+注释一调用了 IputDispatcher 的 start 方法，用于对事件进行分发
 
-- inputDispatcher->start()
+注释2 调用了 InputReader 的 start 方法，用于从 EventHub 中获取原始事件进行处理。
 
-    ```c++
-    status_t InputDispatcher::start() {
-        if (mThread) {
-            return ALREADY_EXISTS;
+至于具体的流程我们下面在做分析
+
+### InputReader 读取事件
+
+IMS 启动的时候会调用 native 层，通过 InputManager 来创建 InputReader 来读取事件，下面我们来具体分析一下
+
+```c++
+status_t InputReader::start() {
+    if (mThread) {
+        return ALREADY_EXISTS;
+    }
+    mThread = std::make_unique<InputThread>(
+            "InputReader", [this]() { loopOnce(); }, [this]() { mEventHub->wake(); });
+    return OK;
+}
+```
+
+线程中执行的是 loopOnce 函数
+
+```c++
+void InputReader::loopOnce() {
+    ......
+    //1
+    size_t count = mEventHub->getEvents(timeoutMillis, mEventBuffer, EVENT_BUFFER_SIZE);
+
+    { // acquire lock
+        if (count) {
+            //2
+            processEventsLocked(mEventBuffer, count);
         }
-        mThread = std::make_unique<InputThread>(
-                "InputDispatcher", [this]() { dispatchOnce(); }, [this]() { mLooper->wake(); });
-        return OK;
-    }
-    ```
+    } // release lock
+    ......
+}
+```
 
-    创建了单独的线程运行，InputThread 接收三个参数，第一个是线程名字，第二个是执行 threadLoop 时的回调函数，第三个是线程销毁前唤醒线程的回调。
+注释一：调用 EventHub 的 getEvents 函数来获取设备节点的信息到 mEventBuffer 中，事件信息主要有两种，一种是设备的增删事件（设备事件），一种是原始的输入事件
 
-    ```c++
-    void InputDispatcher::dispatchOnce() {
-        nsecs_t nextWakeupTime = LONG_LONG_MAX;
-        { // acquire lock
-            std::scoped_lock _l(mLock);
-            mDispatcherIsAlive.notify_all();
-    
-            //1
-            if (!haveCommandsLocked()) {
-               //2
-               dispatchOnceInnerLocked(&nextWakeupTime);
-            }
-            if (runCommandsLockedInterruptible()) {
-                nextWakeupTime = LONG_LONG_MIN;
-            }
-            const nsecs_t nextAnrCheck = processAnrsLocked();
-            nextWakeupTime = std::min(nextWakeupTime, nextAnrCheck);
-    
-            // We are about to enter an infinitely long sleep, because we have no commands or
-            // pending or queued events
-            if (nextWakeupTime == LONG_LONG_MAX) {
-                mDispatcherEnteredIdle.notify_all();
-            }
-        } // release lock
-    
-        // 3
-        nsecs_t currentTime = now();
-        //4
-        int timeoutMillis = toMillisecondTimeoutDelay(currentTime, nextWakeupTime);
-        mLooper->pollOnce(timeoutMillis);
-    }
-    ```
+注释二：对 mEventBuffer 中的输入事件信息进行加工处理，**加工处理后的事件会交给 InputDispatcher 来处理**
 
-    注释一 ：用于检查 InputDispatcher 的缓存队列中是否有等待处理的命令，没有就会执行执行注释二
-
-    注释二 ：将输入事件分发给合适的 Window
-
-    注释三 ：获取当前时间
-
-    注释四 ：计算需要睡眠的时间，调用 pollOnce 进入休眠，当 InputReader 有输入事件时，会唤醒 InputDispatcher，重新进行事件分发
-
-- InputReader->start()
-
-    ```c++
-    status_t InputReader::start() {
-        if (mThread) {
-            return ALREADY_EXISTS;
-        }
-        mThread = std::make_unique<InputThread>(
-                "InputReader", [this]() { loopOnce(); }, [this]() { mEventHub->wake(); });
-        return OK;
-    }
-    ```
-
-    线程中执行的是 loopOnce 函数
-
-    ```c++
-    void InputReader::loopOnce() {
-        ......
+```c++
+void InputReader::processEventsLocked(const RawEvent* rawEvents, size_t count) {
+  for (const RawEvent* rawEvent = rawEvents; count;) {
+        int32_t type = rawEvent->type;
+        size_t batchSize = 1;
         //1
-        size_t count = mEventHub->getEvents(timeoutMillis, mEventBuffer, EVENT_BUFFER_SIZE);
-    
-        { // acquire lock
-            if (count) {
-                //2
-                processEventsLocked(mEventBuffer, count);
-            }
-        } // release lock
-        ......
-    }
-    ```
-
-    注释一：调用 EventHub 的 getEvents 函数来获取设备节点的信息到 mEventBuffer 中，事件信息主要有两种，一种是设备的增删事件（设备事件），一种是原始的输入事件
-
-    注释二：对 mEventBuffer 中的输入事件信息进行加工处理，加工处理后的事件会交给 InputDispatcher 来处理
-
-    ```c++
-    void InputReader::processEventsLocked(const RawEvent* rawEvents, size_t count) {
-      for (const RawEvent* rawEvent = rawEvents; count;) {
-            int32_t type = rawEvent->type;
-            size_t batchSize = 1;
-            //1
-            if (type < EventHubInterface::FIRST_SYNTHETIC_EVENT) {
-                int32_t deviceId = rawEvent->deviceId;
-                while (batchSize < count) {
-                    if (rawEvent[batchSize].type >= EventHubInterface::FIRST_SYNTHETIC_EVENT ||
-                        rawEvent[batchSize].deviceId != deviceId) {
-                        break;
-                    }
-                    batchSize += 1;
+        if (type < EventHubInterface::FIRST_SYNTHETIC_EVENT) {
+            int32_t deviceId = rawEvent->deviceId;
+            while (batchSize < count) {
+                if (rawEvent[batchSize].type >= EventHubInterface::FIRST_SYNTHETIC_EVENT ||
+                    rawEvent[batchSize].deviceId != deviceId) {
+                    break;
                 }
-                //2
-                processEventsForDeviceLocked(deviceId, rawEvent, batchSize);
+                batchSize += 1;
+            }
+            //2
+            processEventsForDeviceLocked(deviceId, rawEvent, batchSize);
+        } else {
+            switch (rawEvent->type) {//3
+                case EventHubInterface::DEVICE_ADDED:
+                    addDeviceLocked(rawEvent->when, rawEvent->deviceId);
+                    break;
+                case EventHubInterface::DEVICE_REMOVED:
+                    removeDeviceLocked(rawEvent->when, rawEvent->deviceId);
+                    break;
+                case EventHubInterface::FINISHED_DEVICE_SCAN:
+                    handleConfigurationChangedLocked(rawEvent->when);
+                    break;
+                default:
+                    ALOG_ASSERT(false); // can't happen
+                    break;
+            }
+        }
+        count -= batchSize;
+        rawEvent += batchSize;
+    }
+}
+void InputReader::addDeviceLocked(nsecs_t when, int32_t eventHubId) {
+	...
+	std::shared_ptr<InputDevice> device = createDeviceLocked(eventHubId, identifier);
+	...
+	mDevices.emplace(eventHubId, device);
+	...
+}
+```
+
+上面代码中遍历所有的输入事件，这些事件用 RawEvent 对象来表示，将原始事件和设备事件分开处理，其中设备事件分为三种类型，这些事件都是在 EventHub 的 getEvent 函数中生成的。
+
+如果是 DEVICE_ADDED(设备添加事件)，**InputReader 会新建一个 InputDevice 对象，用来存储设备信息，并且会将 InputDevice 存储在 KeyedVector 类型的容器 mDevices 中。** 
+
+注释一判断事件类型，true 表示原始输入事件，false 表示设备事件
+
+注释二处理 deviceId 所对应设备的原始输入事件
+
+注释三判断设备事件类型，根据具体情况进行处理
+
+我们重点关注一下原始事件的处理，也就是 `processEventsForDeviceLocked` 函数
+
+```c++
+void InputReader::processEventsForDeviceLocked(int32_t eventHubId, const RawEvent* rawEvents,
+                                               size_t count) {
+    //1
+    auto deviceIt = mDevices.find(eventHubId);
+    if (deviceIt == mDevices.end()) {
+        ALOGW("Discarding event for unknown eventHubId %d.", eventHubId);
+        return;
+    }
+	  //2
+    std::shared_ptr<InputDevice>& device = deviceIt->second;
+    if (device->isIgnored()) {
+        // ALOGD("Discarding event for ignored deviceId %d.", deviceId);
+        return;
+    }
+
+    device->process(rawEvents, count);
+}
+```
+
+mDevices 中保存 key 是 eventHub，而 value 就是 设备InputDevice
+
+注释1处根据 eventHubId 查询 map 中设备的索引，然后根据索引的设备对象 InputDevice 调用 process 方法继续处理。
+
+```C++
+void InputDevice::process(const RawEvent* rawEvents, size_t count) {
+    for (const RawEvent* rawEvent = rawEvents; count != 0; rawEvent++) {
+       //默认为 false，如果设备输入事件缓冲区溢出，这个值为 true 
+       if (mDropUntilNextSync) {
+            if (rawEvent->type == EV_SYN && rawEvent->code == SYN_REPORT) {
+                mDropUntilNextSync = false;
             } else {
-                switch (rawEvent->type) {//3
-                    case EventHubInterface::DEVICE_ADDED:
-                        addDeviceLocked(rawEvent->when, rawEvent->deviceId);
-                        break;
-                    case EventHubInterface::DEVICE_REMOVED:
-                        removeDeviceLocked(rawEvent->when, rawEvent->deviceId);
-                        break;
-                    case EventHubInterface::FINISHED_DEVICE_SCAN:
-                        handleConfigurationChangedLocked(rawEvent->when);
-                        break;
-                    default:
-                        ALOG_ASSERT(false); // can't happen
-                        break;
-                }
+              .....
             }
-            count -= batchSize;
-            rawEvent += batchSize;
+        } else if (rawEvent->type == EV_SYN && rawEvent->code == SYN_DROPPED) {
+            //缓冲区溢出
+            ALOGI("Detected input event buffer overrun for device %s.", getName().c_str());
+            mDropUntilNextSync = true;
+            reset(rawEvent->when);
+        } else {
+            for_each_mapper_in_subdevice(rawEvent->deviceId, [rawEvent](InputMapper& mapper) {
+                mapper.process(rawEvent);
+            });
         }
+        --count;
     }
-    void InputReader::addDeviceLocked(nsecs_t when, int32_t eventHubId) {
-    	...
-    	std::shared_ptr<InputDevice> device = createDeviceLocked(eventHubId, identifier);
-    	...
-    	mDevices.emplace(eventHubId, device);
-    	...
-    }
-    ```
+}
+inline void for_each_mapper_in_subdevice(int32_t eventHubDevice,
+                                         std::function<void(InputMapper&)> f) {
+  auto deviceIt = mDevices.find(eventHubDevice);
+  if (deviceIt != mDevices.end()) {
+     auto& devicePair = deviceIt->second;
+     auto& mappers = devicePair.second;
+     for (auto& mapperPtr : mappers) {
+       f(*mapperPtr);
+     }
+   }
+}
 
-    上面代码中遍历所有的输入事件，这些事件用 RawEvent 对象来表示，将原始事件和设备事件分开处理，其中设备事件分为三种类型，这些事件都是在 EventHub 的 getEvent 函数中生成的。
+```
 
-    如果是 DEVICE_ADDED(设备添加事件)，**InputReader 会新建一个 InputDevice 对象，用来存储设备信息，并且会将 InputDevice 存储在 KeyedVector 类型的容器 mDevices 中。** 
+**真正加工原始输入事件的是 InputMapper 对象**，由于原始输入事件的类型很多，因此 InputMapper 有很多子类，用于加工不同的原始输入事件，例如 TouchInputMapper 用于处理触摸输入事件，KeyboardInputMapper 处理键盘输入事件等。
 
-    注释一判断事件类型，true 表示原始输入事件，false 表示设备事件
+上面代码遍历每一个事件，然后再通过 `for_each_mapper_in_subdevice` 函数遍历 Mapper 类型，获取到合适的 InputMapper 子类对象，然后调用 process 方法：
 
-    注释二处理 deviceId 所对应设备的原始输入事件
-
-    注释三判断设备事件类型，根据具体情况进行处理
-
-    我们重点关注一下原始时间的处理，也就是 `processEventsForDeviceLocked` 函数
-
-    ```c++
-    void InputReader::processEventsForDeviceLocked(int32_t eventHubId, const RawEvent* rawEvents,
-                                                   size_t count) {
-        //1
-        auto deviceIt = mDevices.find(eventHubId);
-        if (deviceIt == mDevices.end()) {
-            ALOGW("Discarding event for unknown eventHubId %d.", eventHubId);
-            return;
-        }
-    	  //2
-        std::shared_ptr<InputDevice>& device = deviceIt->second;
-        if (device->isIgnored()) {
-            // ALOGD("Discarding event for ignored deviceId %d.", deviceId);
-            return;
-        }
-    
-        device->process(rawEvents, count);
-    }
-    ```
-
-    mDevices 中保存 key 是 eventHub，而 value 就是 设备InputDevice
-
-    注释1处根据 eventHubId 查询 map 中设备的索引，然后根据索引对象 InputDevice 调用 process 方法继续处理。
+- ##### 栗子一：键盘输入事件
 
     ```C++
-    void InputDevice::process(const RawEvent* rawEvents, size_t count) {
-        for (const RawEvent* rawEvent = rawEvents; count != 0; rawEvent++) {
-           //默认为 false，如果设备输入事件缓冲区溢出，这个值为 true 
-           if (mDropUntilNextSync) {
-                if (rawEvent->type == EV_SYN && rawEvent->code == SYN_REPORT) {
-                    mDropUntilNextSync = false;
-                } else {
-                  .....
+    void KeyboardInputMapper::process(const RawEvent* rawEvent) {
+        switch (rawEvent->type) {
+            case EV_KEY: { //1
+                int32_t scanCode = rawEvent->code;
+                int32_t usageCode = mCurrentHidUsage;
+                mCurrentHidUsage = 0;
+    
+                if (isKeyboardOrGamepadKey(scanCode)) {
+                    //2
+                    processKey(rawEvent->when, rawEvent->readTime, rawEvent->value != 0, scanCode,usageCode);
                 }
-            } else if (rawEvent->type == EV_SYN && rawEvent->code == SYN_DROPPED) {
-                //缓冲区溢出
-                ALOGI("Detected input event buffer overrun for device %s.", getName().c_str());
-                mDropUntilNextSync = true;
-                reset(rawEvent->when);
-            } else {
-                for_each_mapper_in_subdevice(rawEvent->deviceId, [rawEvent](InputMapper& mapper) {
-                    mapper.process(rawEvent);
-                });
+                break;
             }
-            --count;
+            //3
+            case EV_MSC: {
+                if (rawEvent->code == MSC_SCAN) {
+                    mCurrentHidUsage = rawEvent->value;
+                }
+                break;
+            }
+            //4
+            case EV_SYN: {
+                if (rawEvent->code == SYN_REPORT) {
+                    mCurrentHidUsage = 0;
+                }
+            }
         }
     }
-    inline void for_each_mapper_in_subdevice(int32_t eventHubDevice,
-                                             std::function<void(InputMapper&)> f) {
-      auto deviceIt = mDevices.find(eventHubDevice);
-      if (deviceIt != mDevices.end()) {
-         auto& devicePair = deviceIt->second;
-         auto& mappers = devicePair.second;
-         for (auto& mapperPtr : mappers) {
-           f(*mapperPtr);
-         }
-       }
-    }
-    
     ```
 
-    真正加工原始输入事件的是 InputMapper 对象，由于原始输入事件的类型很多，因此 InputMapper 有很多子类，用于加工不同的原始输入事件，例如 TouchInputMapper 用于处理触摸输入事件，KeyboardInputMapper 处理键盘输入事件等。
+    注释一，如果事件类型是按键类型的事件，就会调用注释二处的 `processKey` 函数
 
-    上面代码遍历每一个时间，然后再通过 `for_each_mapper_in_subdevice` 函数遍历 Mapper 类型，
+    注释三处为其他事件的处理，注释四为同步事件处理。
+
+    我们主要来看一下 processkey 函数的处理
+
+    ```c++
+    void KeyboardInputMapper::processKey(nsecs_t when, nsecs_t readTime, bool down, int32_t scanCode,nt32_t usageCode) {
+      
+        NotifyKeyArgs args(getContext()->getNextId(), when, readTime, getDeviceId(), mSource,
+                           getDisplayId(), policyFlags,
+                           down ? AKEY_EVENT_ACTION_DOWN : AKEY_EVENT_ACTION_UP,
+                           AKEY_EVENT_FLAG_FROM_SYSTEM, keyCode, scanCode, keyMetaState, downTime);
+        getListener()->notifyKey(&args);
+    }
+    ```
+
+    processKey 会将加工后的键盘输入事件封装为 NotifyKeyArgs ，接着将其通知给 InputListenerInterface ，InputDispatcher 继承了 InputListenerInterface ，**因此这里实际上调用了 InputDispatcher 的 notifyKey 函数**，然后进行处理。
+
+    ```c++
+    void InputDispatcher::notifyKey(const NotifyKeyArgs* args) {
+    		//...
+        bool needWake;
+        { // acquire lock
+            mLock.lock();
+            if (shouldSendKeyToInputFilterLocked(args)) {
+                mLock.unlock();
+                policyFlags |= POLICY_FLAG_FILTERED;
+                if (!mPolicy->filterInputEvent(&event, policyFlags)) {
+                    return; // event was consumed by the filter
+                }
+                mLock.lock();
+            }
+            //1
+            std::unique_ptr<KeyEntry> newEntry =
+                    std::make_unique<KeyEntry>(args->id, args->eventTime, args->deviceId, args->source,
+                                               args->displayId, policyFlags, args->action, flags,
+                                               keyCode, args->scanCode, metaState, repeatCount,
+                                               args->downTime);
+            //2
+            needWake = enqueueInboundEventLocked(std::move(newEntry));
+            mLock.unlock();
+        } // release lock
+    
+        if (needWake) {
+            mLooper->wake();
+        }
+    }
+    ```
+
+    上面代码采用Mutex互斥锁的形式，注释一处根据 args 重新封装一个 KeyEvent ，代表一次按键数据，注释二根据 KeyEvetn 来判断是否需要将 InputDispatcher 唤醒，如果需要，就调用 wake 进行唤醒，InputDispatcher 被唤醒就会重新对输入事件进行分发。
+
+- 🌰2：触摸输入事件
+
+    ```C++
+    void TouchInputMapper::process(const RawEvent* rawEvent) {
+        mCursorButtonAccumulator.process(rawEvent); //处理鼠标事件，type == EV_KEY 进行处理
+        mCursorScrollAccumulator.process(rawEvent); //处理鼠标滚轮事件，type == EV_REL 进行处理
+        mTouchButtonAccumulator.process(rawEvent);  //处理屏幕触摸事件，type == EV_KEY 进行处理
+    
+        if (rawEvent->type == EV_SYN && rawEvent->code == SYN_REPORT) {
+            sync(rawEvent->when, rawEvent->readTime);
+        }
+    }
+    ```
+
+    上面代码中，前三个是对事件进行判断，然后再进行处理，其中 EV_KEY 是键盘事件，EV_REL 是相对坐标事件。如果符合对应的条件，则会抽取对应的信息，例如坐标数据等
+
+    接着进行判断，如果是 EV_SYN (同步事件)，并且事件 code 等于 SYN_REPORT 则执行同步函数
+
+    ```C++
+    void TouchInputMapper::sync(nsecs_t when, nsecs_t readTime) {
+        // Push a new state.
+        mRawStatesPending.emplace_back();
+    
+        RawState& next = mRawStatesPending.back();
+        next.clear();
+        next.when = when;
+        next.readTime = readTime;
+    
+        // Sync button state.
+        next.buttonState =
+                mTouchButtonAccumulator.getButtonState() | mCursorButtonAccumulator.getButtonState();
+    
+        // 同步滑动事件
+        next.rawVScroll = mCursorScrollAccumulator.getRelativeVWheel();
+        next.rawHScroll = mCursorScrollAccumulator.getRelativeHWheel();
+        mCursorScrollAccumulator.finishSync();
+    
+        // 同步触摸事件
+        syncTouch(when, &next);
+    
+        //.....
+    
+        //继续处理事件
+        processRawTouches(false /*timeout*/);
+    }
+    ```
+
+    继续看 `processRawTouches` 函数
+
+    ```C++
+    void TouchInputMapper::processRawTouches(bool timeout) {
+        //....
+        cookAndDispatch(when, readTime);
+        //....   
+    }
+    ```
+
+    ```C++
+    void TouchInputMapper::cookAndDispatch(nsecs_t when, nsecs_t readTime) {
+     		 //...
+         //进行分发
+         dispatchTouches(when, readTime, policyFlags);  
+    		 //...
+    }
+    ```
+
+    ```C++
+    void TouchInputMapper::dispatchTouches(nsecs_t when, nsecs_t readTime, uint32_t policyFlags) {
+        BitSet32 currentIdBits = mCurrentCookedState.cookedPointerData.touchingIdBits;
+        BitSet32 lastIdBits = mLastCookedState.cookedPointerData.touchingIdBits;
+        int32_t metaState = getContext()->getGlobalMetaState();
+        int32_t buttonState = mCurrentCookedState.buttonState;
+    
+       
+            // Dispatch pointer up events.
+            while (!upIdBits.isEmpty()) {
+                //.....
+                dispatchMotion(when, readTime, policyFlags, mSource, AMOTION_EVENT_ACTION_POINTER_UP, 0,
+                               isCanceled ? AMOTION_EVENT_FLAG_CANCELED : 0, metaState, buttonState, 0,
+                               mLastCookedState.cookedPointerData.pointerProperties,
+                               mLastCookedState.cookedPointerData.pointerCoords,
+                               mLastCookedState.cookedPointerData.idToIndex, dispatchedIdBits, upId,
+                               mOrientedXPrecision, mOrientedYPrecision, mDownTime);
+                dispatchedIdBits.clearBit(upId);
+                mCurrentCookedState.cookedPointerData.canceledIdBits.clearBit(upId);
+            }
+    
+            // Dispatch move events if any of the remaining pointers moved from their old locations.
+            // Although applications receive new locations as part of individual pointer up
+            // events, they do not generally handle them except when presented in a move event.
+            if (moveNeeded && !moveIdBits.isEmpty()) {
+                //...
+                dispatchMotion(when, readTime, policyFlags, mSource, AMOTION_EVENT_ACTION_MOVE, 0, 0,
+                               metaState, buttonState, 0,
+                               mCurrentCookedState.cookedPointerData.pointerProperties,
+                               mCurrentCookedState.cookedPointerData.pointerCoords,
+                               mCurrentCookedState.cookedPointerData.idToIndex, dispatchedIdBits, -1,
+                               mOrientedXPrecision, mOrientedYPrecision, mDownTime);
+            }
+    
+            // Dispatch pointer down events using the new pointer locations.
+            while (!downIdBits.isEmpty()) {
+                 //...
+                dispatchMotion(when, readTime, policyFlags, mSource, AMOTION_EVENT_ACTION_POINTER_DOWN,
+                               0, 0, metaState, buttonState, 0,
+                               mCurrentCookedState.cookedPointerData.pointerProperties,
+                               mCurrentCookedState.cookedPointerData.pointerCoords,
+                               mCurrentCookedState.cookedPointerData.idToIndex, dispatchedIdBits,
+                               downId, mOrientedXPrecision, mOrientedYPrecision, mDownTime);
+            }
+        }
+    }
+    ```
+
+    上面代码中，会根据记录的上一次触摸位置，对事件的类型进行判断，然后做相应的分发，事件类型有抬起，下落，移动等，然后进行对应的分发，无论是何种类型，最终调用的都是 `dispatchMoion`方法
+
+    ```C++
+    void TouchInputMapper::dispatchMotion(nsecs_t when, nsecs_t readTime, uint32_t policyFlags,
+                                          uint32_t source, int32_t action, int32_t actionButton,
+                                          int32_t flags, int32_t metaState, int32_t buttonState,
+                                          int32_t edgeFlags, const PointerProperties* properties,
+                                          const PointerCoords* coords, const uint32_t* idToIndex,
+                                          BitSet32 idBits, int32_t changedId, float xPrecision,
+                                          float yPrecision, nsecs_t downTime) {
+    
+    
+        //最终形成的 NoteifyMotionArgs 对象
+        NotifyMotionArgs args(getContext()->getNextId(), when, readTime, deviceId, source, displayId,
+                              policyFlags, action, actionButton, flags, metaState, buttonState,
+                              MotionClassification::NONE, edgeFlags, pointerCount, pointerProperties,
+                              pointerCoords, xPrecision, yPrecision, xCursorPosition, yCursorPosition,downTime, std::move(frames));
+        //回调到 InputDispatcher 的 notifyMotion 方法中
+        getListener()->notifyMotion(&args);
+    }
+    ```
+
+​	 
+
+### inputDispatcher->start()
+
+```c++
+status_t InputDispatcher::start() {
+    if (mThread) {
+        return ALREADY_EXISTS;
+    }
+    mThread = std::make_unique<InputThread>(
+            "InputDispatcher", [this]() { dispatchOnce(); }, [this]() { mLooper->wake(); });
+    return OK;
+}
+```
+
+创建了单独的线程运行，InputThread 接收三个参数，第一个是线程名字，第二个是执行 threadLoop 时的回调函数，第三个是线程销毁前唤醒线程的回调。
+
+```c++
+void InputDispatcher::dispatchOnce() {
+    nsecs_t nextWakeupTime = LONG_LONG_MAX;
+    { // acquire lock
+        std::scoped_lock _l(mLock);
+        mDispatcherIsAlive.notify_all();
+
+        //1
+        if (!haveCommandsLocked()) {
+           //2
+           dispatchOnceInnerLocked(&nextWakeupTime);
+        }
+        if (runCommandsLockedInterruptible()) {
+            nextWakeupTime = LONG_LONG_MIN;
+        }
+        const nsecs_t nextAnrCheck = processAnrsLocked();
+        nextWakeupTime = std::min(nextWakeupTime, nextAnrCheck);
+
+        // We are about to enter an infinitely long sleep, because we have no commands or
+        // pending or queued events
+        if (nextWakeupTime == LONG_LONG_MAX) {
+            mDispatcherEnteredIdle.notify_all();
+        }
+    } // release lock
+
+    // 3
+    nsecs_t currentTime = now();
+    //4
+    int timeoutMillis = toMillisecondTimeoutDelay(currentTime, nextWakeupTime);
+    mLooper->pollOnce(timeoutMillis);
+}
+```
+
+注释一 ：用于检查 InputDispatcher 的缓存队列中是否有等待处理的命令，没有就会执行执行注释二
+
+注释二 ：将输入事件分发给合适的 Window
+
+注释三 ：获取当前时间
+
+注释四 ：计算需要睡眠的时间，调用 pollOnce 进入休眠，当 InputReader 有输入事件时，会唤醒 InputDispatcher，重新进行事件分发		
