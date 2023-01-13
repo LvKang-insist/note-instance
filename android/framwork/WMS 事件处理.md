@@ -134,13 +134,11 @@ InputManager 构造方法中：
 
     **EventHub 通过 Linux 内核的 Notify 与 Epoll 机制监听设备节点，通过 EventHub 的 getEvent 函数读取设备节点的增删事件和原始输入事件。**
 
-**总结一下**
+**小结**
 
 1. 在 IMS 构造方法中，先创建了一个处于 `android.display` 的 Handler 对象。接着调用 native 层函数 `nativeInit` 创建了 NativeInputManager ，并且将该对象的地址转成 long 类型返回给了java 层。
 2. 在 NativeInputMnager 构造方法中保存了 IMS 的实例，并创建了 InputMnanager 对象。
 3. InputManager 中创建了 InputDispatcher 和 InputReader 对象，分别用于读取事件和分发事件。InputReader 会不断的从 EventHub 中读取原始事件信息并加工交给 InputDispatcher ，inputDispatcher 会将事件分发给合适的 Window。
-
-<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202301101029652.png" alt="image-20230110102957616" style="zoom:50%;" />
 
 #### IMS 的启动
 
@@ -438,7 +436,7 @@ inline void for_each_mapper_in_subdevice(int32_t eventHubDevice,
 
     上面代码采用Mutex互斥锁的形式，注释一处根据 args 重新封装一个 KeyEvent ，代表一次按键数据，注释二根据 KeyEvetn 来判断是否需要将 InputDispatcher 唤醒，如果需要，就调用 wake 进行唤醒，InputDispatcher 被唤醒就会重新对输入事件进行分发。
 
-- 🌰2：触摸输入事件
+- ##### 🌰2：触摸输入事件
 
     ```C++
     void TouchInputMapper::process(const RawEvent* rawEvent) {
@@ -574,9 +572,64 @@ inline void for_each_mapper_in_subdevice(int32_t eventHubDevice,
     }
     ```
 
-​	 
+    ```C++
+    void InputDispatcher::notifyMotion(const NotifyMotionArgs* args) {
+    		//.......
+        bool needWake;
+        { // acquire lock
+    
+            // Just enqueue a new motion event.
+            std::unique_ptr<MotionEntry> newEntry =
+                    std::make_unique<MotionEntry>(args->id, args->eventTime, args->deviceId,
+                                                  args->source, args->displayId, policyFlags,
+                                                  args->action, args->actionButton, args->flags,
+                                                  args->metaState, args->buttonState,
+                                                  args->classification, args->edgeFlags,
+                                                  args->xPrecision, args->yPrecision,
+                                                  args->xCursorPosition, args->yCursorPosition,
+                                                  args->downTime, args->pointerCount,
+                                                  args->pointerProperties, args->pointerCoords, 0, 0);
+            needWake = enqueueInboundEventLocked(std::move(newEntry));
+            mLock.unlock();
+        } // release lock
+    
+        if (needWake) {
+            mLooper->wake();
+        }
+    }
+    ```
 
-### inputDispatcher->start()
+    上面将 args 封装为 MotionEntry 类型的对象，然后调用了 enqueueInboundEventLocked 方法，该方法中会将 MotionEntry 压入到栈中。然后根据返回值来判断是否需要唤醒InputDispatcher线程。
+
+- ##### 小结
+
+    通过上面 InputReader 的启动和两个例子我们可以看出：
+
+    1. InputReader 只是调用 EventHub 的 getEvent 获取了原始事件，获取到事件后，就会根据原始事件找到对应的 InputDevice(设备对象)。
+    2. 在 InputDevice 中，根据事件获取到对应的 `InputMapper` 用于加工事件。InputMapper 有很多子类，分别对应了很多事件类型，例如触摸事件，多点触摸事件，按键事件等。
+    3. 上面也通过两个例子，来大致的看了一下事件被加工封装的过程，通过分析，最终我们可以发现事件被加工结束后都会通过 getListener 回调掉 InputDispatcher 中对应的两个方法，键盘事件最终被封装为 `KeyEntry` 对象，而触摸事件被封装成了 `MotionEntry` 对象。这两个方法最终都调用了 `enqueueInboundEventLocked` 方法，该方法我们在下面继续看。
+
+    ![image-20230113172259997](https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202301131723096.png)
+
+### InputDspatcher 分发事件
+
+通过最上面分析，我们知道事件最终被封装成了两个对象，分别是 keyEvent 和 MotionEntry(**当然肯定不止这两个类型，这里就以这两个为例**)，这两个对象都继承自 EventEntry 。最后他们都调用了 `enqueueInboundEventLocked` 方法，然后唤醒了 InputDispatcherThread 线程进行处理，我们继续接着看:
+
+```C++
+bool InputDispatcher::enqueueInboundEventLocked(std::unique_ptr<EventEntry> newEntry) {
+    bool needWake = mInboundQueue.empty();
+    //将事件压入 minboundQueue 中
+    mInboundQueue.push_back(std::move(newEntry));
+    EventEntry& entry = *(mInboundQueue.back());
+    traceInboundQueueLengthLocked();
+		//...
+    return needWake;
+}
+```
+
+上面将封装的事件压入到队列中。接着就是唤醒 InputDispatchert 线程进行分发处理了。
+
+真正的事件派发是一个串行的过程，我们来从头开始来看一下 InputDispatcher 是如何进行派发的：
 
 ```c++
 status_t InputDispatcher::start() {
