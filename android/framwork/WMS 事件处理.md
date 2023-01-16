@@ -684,3 +684,202 @@ void InputDispatcher::dispatchOnce() {
 注释三 ：获取当前时间
 
 注释四 ：计算需要睡眠的时间，调用 pollOnce 进入休眠，当 InputReader 有输入事件时，会唤醒 InputDispatcher，重新进行事件分发		
+
+我们主要来看一下注释二是如何进行事件分发：
+
+```C++
+void InputDispatcher::dispatchOnceInnerLocked(nsecs_t* nextWakeupTime) {
+    //.....
+    // 如果 InputDispatcher 被冻结，则不进行派发操作 
+    if (mDispatchFrozen) {
+        if (DEBUG_FOCUS) {
+            ALOGD("Dispatch frozen.  Waiting some more.");
+        }
+        return;
+    }
+
+    // 如果 isAppSwitchDue 为 true，说明没有及时响应 HOME 键等操作
+    bool isAppSwitchDue = mAppSwitchDueTime <= currentTime; //1
+    if (mAppSwitchDueTime < *nextWakeupTime) {//2
+        *nextWakeupTime = mAppSwitchDueTime;
+    }
+
+    // 如果没有待分发的事件，去 mInboundQueue 取出一个事件
+    if (!mPendingEvent) {
+        //如果没有待分发的事件，就去 mInboundQueue 中取出一个事件
+        if (mInboundQueue.empty()) {
+            .......
+            if (!mPendingEvent) {
+                return;
+            }
+        } else {
+            //不为空，则从头部取出一个事件
+            mPendingEvent = mInboundQueue.front();
+            mInboundQueue.pop_front();
+            traceInboundQueueLengthLocked();
+        }
+        // Poke user activity for this event.
+        if (mPendingEvent->policyFlags & POLICY_FLAG_PASS_TO_USER) {
+            pokeUserActivityLocked(*mPendingEvent);
+        }
+    }
+
+    ALOG_ASSERT(mPendingEvent != nullptr);
+    bool done = false;
+    DropReason dropReason = DropReason::NOT_DROPPED; //3
+		.....
+    switch (mPendingEvent->type) {
+        case EventEntry::Type::CONFIGURATION_CHANGED:  .....
+        case EventEntry::Type::DEVICE_RESET: .....
+        case EventEntry::Type::FOCUS:  .....
+        case EventEntry::Type::DRAG:  .....
+        case EventEntry::Type::KEY:.....
+        case EventEntry::Type::MOTION: {
+            std::shared_ptr<MotionEntry> motionEntry =
+                    std::static_pointer_cast<MotionEntry>(mPendingEvent);
+            //如果没有及时响应窗口切换操作
+            if (dropReason == DropReason::NOT_DROPPED && isAppSwitchDue) {
+                dropReason = DropReason::APP_SWITCH;
+            }
+            //事件过期
+            if (dropReason == DropReason::NOT_DROPPED && isStaleEvent(currentTime, *motionEntry)) {
+                dropReason = DropReason::STALE;
+            }
+            //阻碍其他窗口获取事件
+            if (dropReason == DropReason::NOT_DROPPED && mNextUnblockedEvent) {
+                dropReason = DropReason::BLOCKED;
+            }
+            //5
+            done = dispatchMotionLocked(currentTime, motionEntry, &dropReason, nextWakeupTime);
+            break;
+        }
+
+        case EventEntry::Type::SENSOR: //.....
+    }
+
+    if (done) {
+        if (dropReason != DropReason::NOT_DROPPED) {
+            dropInboundEventLocked(*mPendingEvent, dropReason);
+        }
+        mLastDropReason = dropReason;
+				//释放本次事件处理对象
+        releasePendingEventLocked();
+        //使得 inputDispatcher 能够快速处理下一个分发事件
+        *nextWakeupTime = LONG_LONG_MIN; 
+    }
+}
+```
+
+上面代码主要截取了 Motion 事件相关的源码，主要的事情有下面几点：
+
+如果 InputDispatcher 被冻结，则不进行派发操作，InputDispatcher 有三种状态，分别是正常，冻结，和禁用。
+
+在注释一处的 mAppSwitchDueTime 代表了App窗口发送切换操作(例如按下 Home，挂电话)事件的最迟分发事件，如果这个时候 mAppSwitchDueTime 小于等于当前系统时间，说明没有及时响应窗口切换操作，则设置 true。
+
+注释二 如果 mAppSwitchDueTime 小于 nextWakeupTime(下一次inputDispatcherThread醒来的时间)，就直接进行赋值，这样当 InputDispatcher 处理完分发事件后，就会第一时间处理窗口切换操作。 
+
+注释三 代表了事件被丢弃的原因，默认值是 NOT_DROPPED ，代表不会丢弃
+
+注释四 对事件类型进行区分，这里主要是看 Motion 事件。
+
+注释五 通各种判断，最终会调用 `dispatchMotionLocked` 来为这个事件寻找合适的窗口。
+
+最后，如果事件分发成功，则会调用 releasePendingEventLocked 函数，内部会释放本次事件处理使用到的对象，并且将 nextWakeupTime 值设置为 LONG_LONG_MIN ，这是为了让 InputDispatcher 能够快速处理下一个分发事件。
+
+### 分发到目标窗口
+
+接着上面的分析，还是以 Motion 事件为例 来看一下分发过程，如果是 Motion 事件，最终调用的是 diapatchMotionLock 函数，我们接着看
+
+```C++
+ool InputDispatcher::dispatchMotionLocked(nsecs_t currentTime, std::shared_ptr<MotionEntry> entry,
+                                           DropReason* dropReason, nsecs_t* nextWakeupTime) {
+
+    if (!entry->dispatchInProgress) {
+        entry->dispatchInProgress = true; //已经进入分发过程
+        logOutboundMotionDetails("dispatchMotion - ", *entry);
+    }
+
+    // 事件需要丢弃，
+    if (*dropReason != DropReason::NOT_DROPPED) { ......
+        return true;
+    }
+
+    bool isPointerEvent = entry->source & AINPUT_SOURCE_CLASS_POINTER;
+
+    // 1 目标窗口信息列表
+    std::vector<InputTarget> inputTargets;
+
+    bool conflictingPointerActions = false;
+    InputEventInjectionResult injectionResult;
+    if (isPointerEvent) {
+        // 2 点击类型事件处理
+        injectionResult =
+                findTouchedWindowTargetsLocked(currentTime, *entry, inputTargets, nextWakeupTime,
+                                               &conflictingPointerActions);
+    } else {
+        // 3 非触摸形式的事件处理
+        injectionResult =
+                findFocusedWindowTargetsLocked(currentTime, *entry, inputTargets, nextWakeupTime);
+    }
+   //窗口无响应
+    if (injectionResult == InputEventInjectionResult::PENDING) {
+        return false;
+    }
+
+    setInjectionResult(*entry, injectionResult);
+    if (injectionResult == InputEventInjectionResult::PERMISSION_DENIED) {
+        ALOGW("Permission denied, dropping the motion (isPointer=%s)", toString(isPointerEvent));
+        return true;
+    }
+    //没有分发成功，说明没有找到合适的窗口
+    if (injectionResult != InputEventInjectionResult::SUCCEEDED) {
+        CancelationOptions::Mode mode(isPointerEvent
+                                              ? CancelationOptions::CANCEL_POINTER_EVENTS
+                                              : CancelationOptions::CANCEL_NON_POINTER_EVENTS);
+        CancelationOptions options(mode, "input event injection failed");
+        synthesizeCancelationEventsForMonitorsLocked(options);
+        return true;
+    }
+
+    // 4 将分发目标添加到 inputTargets 中
+    addGlobalMonitoringTargetsLocked(inputTargets, getTargetDisplayId(*entry));
+
+ 		....
+    // 5 将事件分发给 inputTargets 列表中的目标
+    dispatchEventLocked(currentTime, entry, inputTargets);
+    return true;
+}
+```
+
+注释一处是一个 `InputTarget` 类型的列表，里面保存目标窗口的信息
+
+- InputTarget
+
+    ```C++
+    struct InputTarget {
+      enum {
+        //此标记表示事件正在交付给前台应用程序
+        FLAG_FOREGROUND = 1 << 0,
+        //此标记指示MotionEvent位于目标区域内
+        FLAG_WINDOW_IS_OBSCURED = 1 << 1,
+        ...
+    };
+        //inputDispatcher与目标窗口的通信管道
+        sp<InputChannel> inputChannel;//1
+        //事件派发的标记
+        int32_t flags;
+        //屏幕坐标系相对于目标窗口坐标系的偏移量
+        float xOffset, yOffset;//2
+        //屏幕坐标系相对于目标窗口坐标系的缩放系数
+        float scaleFactor;//3
+        BitSet32 pointerIds;
+    }    
+    ```
+
+    inputTarget 结构图可以说是与目标窗口的转换器，分为两个部分，一个是枚举部分，存储着与目标窗交互的标记，另一部分是所要传递的参数，注释一处 InputChannel 实际上是一个 SocketPair，用于进程的双向通信，注释2是屏幕坐标相对于目标窗口的偏移量，MotionEentry 中存储的 是屏幕坐标系。注释三就是来讲屏幕坐标系转为目标窗口的坐标系。
+
+注释二和三会对点击形式和非触摸形式的事件进行处理，最后讲处理结果交个 injectionResult
+
+注释四将目标窗口添加到 inputTargets 列表中，最终在注释五处将事件分发给 inputTargets 列表中的目标。
+
+​		
