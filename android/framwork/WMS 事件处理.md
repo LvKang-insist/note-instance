@@ -882,4 +882,6 @@ ool InputDispatcher::dispatchMotionLocked(nsecs_t currentTime, std::shared_ptr<M
 
 注释四将目标窗口添加到 inputTargets 列表中，最终在注释五处将事件分发给 inputTargets 列表中的目标。
 
-​		
+### 点击类型事件处理		
+
+在上面的注释二和三中，分别对 Motion 事件中的点击事件和 非触摸类型的事件，由于非触摸类型事件不常见，这里对点击类型的事件进行分析
