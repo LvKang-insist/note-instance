@@ -882,6 +882,27 @@ ool InputDispatcher::dispatchMotionLocked(nsecs_t currentTime, std::shared_ptr<M
 
 注释四将目标窗口添加到 inputTargets 列表中，最终在注释五处将事件分发给 inputTargets 列表中的目标。
 
-### 点击类型事件处理		
+### 总结
 
-在上面的注释二和三中，分别对 Motion 事件中的点击事件和 非触摸类型的事件，由于非触摸类型事件不常见，这里对点击类型的事件进行分析
+本篇文章主要分析了一个原始事件从读取到分发的过程，由于篇幅原因，事件具体是如何分发到 View 上没有分析，这部分内容在下篇文章中在进行分析。
+
+在最后来对本篇文章做一个小结
+
+1. SystemServer 创建 IMS ，并且传入 WMS 对象
+2. IMS 构造方法中，会调用 native 层函数，并且创建 nativeInputManager ，并且将地址转为 long 类型返回到 java 层
+3. NativeinputManager 内部会保存 IMS 实例，并且创建 InputManager 对象
+4. InputManager 创建 InputDispatcher 和 InputReader 对象，封闭用于读取和分发事件
+5. InputReader 会开启一个线程，通过调用 EventHub 的 getEvent 方法获取到设备节点中的原始输入事件
+6. InputReader 获取到事件后，就会根据原始事件找对对应的InputDevice(设备对象)
+7. 在InputDevice(设备对象)中根据对应的类型获取到对应的 InputMapper 用于加工事件，InputManager 有很多子类，分别对应了很多事件类型，本篇文章中距离的是键盘输入事件和触摸事件。
+8. InputManager 的子类加工完成后都会通过 getListener 进行回调，会掉到 InputDispatcher 中去。
+9. 回调到 InputDispatcher 中后对事件进行封装，被封装后的事件都会继承 EventEntry 类，最后这些事件会被添加到                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+10. 
+
+##### 小结
+
+通过上面 InputReader 的启动和两个例子我们可以看出：
+
+1. InputReader 只是调用 EventHub 的 getEvent 获取了原始事件，获取到事件后，就会根据原始事件找到对应的 InputDevice(设备对象)。
+2. 在 InputDevice 中，根据事件获取到对应的 `InputMapper` 用于加工事件。InputMapper 有很多子类，分别对应了很多事件类型，例如触摸事件，多点触摸事件，按键事件等。
+3. 上面也通过两个例子，来大致的看了一下事件被加工封装的过程，通过分析，最终我们可以发现事件被加工结束后都会通过 getListener 回调掉 InputDispatcher 中对应的两个方法，键盘事件最终被封装为 `KeyEntry` 对象，而触摸事件被封装成了 `MotionEntry` 对象。这两个方法最终都调用了 `enqueueInboundEventLocked` 方法，该方法我们在下面继续看。
