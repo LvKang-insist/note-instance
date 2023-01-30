@@ -4,6 +4,8 @@
 
 自从对于应用层面的分发过程了解清楚之后，就一直忍不住想知道只个事件到底是怎么产生的，到底是从哪里来，要往哪里去，具体的派发机制是怎样的。虽然在开发的过程中搞懂应用层面的也就够了，但是在好奇心的驱使下，我还是忍不住的开始了......
 
+本篇文章中的源码全部来自于 `https://cs.android.com/` ,基于 Android 12
+
 ### 组成部分
 
 说起组成部分，我们最熟悉的就是  View 中的事件传递了。除此之外，还有两个大部分，第一个就是输入系统部分，也就是 InputManagerService(IMS) 和 WindowManagerService(WMS) 部分。如下图所示：
@@ -29,8 +31,6 @@ WMS 本身的主要职责就是 Window(窗口) 管理等，具体的如下图。
 这个应该是我们最熟悉的了，一般情况下，输入事件最终都会交给 View 进行处理。
 
 ### IMS 的创建和启动
-
-http://aospxref.com/android-12.0.0_r3/xref/frameworks/base/services/core/jni/com_android_server_input_InputManagerService.cpp
 
 与 WMS 一样，IMS 也是在 `SystemServer` 中创建的 ，在 run 方法中调用了 `startOtherServers` 方法
 
@@ -206,6 +206,25 @@ status_t InputReader::start() {
 }
 ```
 
+**InputThread 继承了 Thread，native 的 Thread 内部有一个循环，当线程运行时，会调用 threadload 函数，如果返回了 true 并且没有调用 requestExit 函数，就会循环调用 threadloop 函数**
+
+```C++
+class InputThreadImpl : public Thread {
+public:
+    explicit InputThreadImpl(std::function<void()> loop)
+          : Thread(/* canCallJava */ true), mThreadLoop(loop) {}
+
+    ~InputThreadImpl() {}
+private:
+    std::function<void()> mThreadLoop;
+
+    bool threadLoop() override {
+        mThreadLoop();
+        return true;
+    }
+};
+```
+
 线程中执行的是 loopOnce 函数
 
 ```c++
@@ -221,6 +240,8 @@ void InputReader::loopOnce() {
         }
     } // release lock
     ......
+    //3  
+    mQueuedListener->flush();   
 }
 ```
 
@@ -577,18 +598,10 @@ inline void for_each_mapper_in_subdevice(int32_t eventHubDevice,
     		//.......
         bool needWake;
         { // acquire lock
-    
             // Just enqueue a new motion event.
             std::unique_ptr<MotionEntry> newEntry =
                     std::make_unique<MotionEntry>(args->id, args->eventTime, args->deviceId,
-                                                  args->source, args->displayId, policyFlags,
-                                                  args->action, args->actionButton, args->flags,
-                                                  args->metaState, args->buttonState,
-                                                  args->classification, args->edgeFlags,
-                                                  args->xPrecision, args->yPrecision,
-                                                  args->xCursorPosition, args->yCursorPosition,
-                                                  args->downTime, args->pointerCount,
-                                                  args->pointerProperties, args->pointerCoords, 0, 0);
+                                                  ......);
             needWake = enqueueInboundEventLocked(std::move(newEntry));
             mLock.unlock();
         } // release lock
@@ -597,9 +610,20 @@ inline void for_each_mapper_in_subdevice(int32_t eventHubDevice,
             mLooper->wake();
         }
     }
+    bool InputDispatcher::enqueueInboundEventLocked(std::unique_ptr<EventEntry> newEntry) {
+        bool needWake = mInboundQueue.empty();
+        //将事件添加到 minboundQueue 中
+        mInboundQueue.push_back(std::move(newEntry));
+        EventEntry& entry = *(mInboundQueue.back());
+        traceInboundQueueLengthLocked();
+    		//...
+        return needWake;
+    }
     ```
 
-    上面将 args 封装为 MotionEntry 类型的对象，然后调用了 enqueueInboundEventLocked 方法，该方法中会将 MotionEntry 压入到栈中。然后根据返回值来判断是否需要唤醒InputDispatcher线程。
+    上面将 args 封装为 MotionEntry 类型的对象，然后调用了 enqueueInboundEventLocked 方法，该方法中会将 MotionEntry t添加到队列中。然后根据返回值来判断是否需要唤醒InputDispatcher线程。
+
+    
 
 - ##### 小结
 
@@ -607,25 +631,11 @@ inline void for_each_mapper_in_subdevice(int32_t eventHubDevice,
 
     1. InputReader 只是调用 EventHub 的 getEvent 获取了原始事件，获取到事件后，就会根据原始事件找到对应的 InputDevice(设备对象)。
     2. 在 InputDevice 中，根据事件获取到对应的 `InputMapper` 用于加工事件。InputMapper 有很多子类，分别对应了很多事件类型，例如触摸事件，多点触摸事件，按键事件等。
-    3. 上面也通过两个例子，来大致的看了一下事件被加工封装的过程，通过分析，最终我们可以发现事件被加工结束后都会通过 getListener 回调掉 InputDispatcher 中对应的两个方法，键盘事件最终被封装为 `KeyEntry` 对象，而触摸事件被封装成了 `MotionEntry` 对象。这两个方法最终都调用了 `enqueueInboundEventLocked` 方法，该方法我们在下面继续看。
+    3. 上面也通过两个例子，来大致的看了一下事件被加工封装的过程，通过分析，最终我们可以发现事件被加工结束后都会通过 getListener 回调掉 InputDispatcher 中对应的两个方法，键盘事件最终被封装为 `KeyEntry` 对象，而触摸事件被封装成了 `MotionEntry` 对象。这两个方法最终都调用了 `enqueueInboundEventLocked` 方法，最后根据返回值来判断是否需要唤醒 InputDispatcher 线程，如果需要，就会进行唤醒，并重新进行事件的分发。
 
     ![image-20230113172259997](https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202301131723096.png)
 
 ### InputDspatcher 分发事件
-
-通过最上面分析，我们知道事件最终被封装成了两个对象，分别是 keyEvent 和 MotionEntry(**当然肯定不止这两个类型，这里就以这两个为例**)，这两个对象都继承自 EventEntry 。最后他们都调用了 `enqueueInboundEventLocked` 方法，然后唤醒了 InputDispatcherThread 线程进行处理，我们继续接着看:
-
-```C++
-bool InputDispatcher::enqueueInboundEventLocked(std::unique_ptr<EventEntry> newEntry) {
-    bool needWake = mInboundQueue.empty();
-    //将事件压入 minboundQueue 中
-    mInboundQueue.push_back(std::move(newEntry));
-    EventEntry& entry = *(mInboundQueue.back());
-    traceInboundQueueLengthLocked();
-		//...
-    return needWake;
-}
-```
 
 上面将封装的事件压入到队列中。接着就是唤醒 InputDispatchert 线程进行分发处理了。
 
@@ -786,102 +796,6 @@ void InputDispatcher::dispatchOnceInnerLocked(nsecs_t* nextWakeupTime) {
 
 最后，如果事件分发成功，则会调用 releasePendingEventLocked 函数，内部会释放本次事件处理使用到的对象，并且将 nextWakeupTime 值设置为 LONG_LONG_MIN ，这是为了让 InputDispatcher 能够快速处理下一个分发事件。
 
-### 分发到目标窗口
-
-接着上面的分析，还是以 Motion 事件为例 来看一下分发过程，如果是 Motion 事件，最终调用的是 diapatchMotionLock 函数，我们接着看
-
-```C++
-ool InputDispatcher::dispatchMotionLocked(nsecs_t currentTime, std::shared_ptr<MotionEntry> entry,
-                                           DropReason* dropReason, nsecs_t* nextWakeupTime) {
-
-    if (!entry->dispatchInProgress) {
-        entry->dispatchInProgress = true; //已经进入分发过程
-        logOutboundMotionDetails("dispatchMotion - ", *entry);
-    }
-
-    // 事件需要丢弃，
-    if (*dropReason != DropReason::NOT_DROPPED) { ......
-        return true;
-    }
-
-    bool isPointerEvent = entry->source & AINPUT_SOURCE_CLASS_POINTER;
-
-    // 1 目标窗口信息列表
-    std::vector<InputTarget> inputTargets;
-
-    bool conflictingPointerActions = false;
-    InputEventInjectionResult injectionResult;
-    if (isPointerEvent) {
-        // 2 点击类型事件处理
-        injectionResult =
-                findTouchedWindowTargetsLocked(currentTime, *entry, inputTargets, nextWakeupTime,
-                                               &conflictingPointerActions);
-    } else {
-        // 3 非触摸形式的事件处理
-        injectionResult =
-                findFocusedWindowTargetsLocked(currentTime, *entry, inputTargets, nextWakeupTime);
-    }
-   //窗口无响应
-    if (injectionResult == InputEventInjectionResult::PENDING) {
-        return false;
-    }
-
-    setInjectionResult(*entry, injectionResult);
-    if (injectionResult == InputEventInjectionResult::PERMISSION_DENIED) {
-        ALOGW("Permission denied, dropping the motion (isPointer=%s)", toString(isPointerEvent));
-        return true;
-    }
-    //没有分发成功，说明没有找到合适的窗口
-    if (injectionResult != InputEventInjectionResult::SUCCEEDED) {
-        CancelationOptions::Mode mode(isPointerEvent
-                                              ? CancelationOptions::CANCEL_POINTER_EVENTS
-                                              : CancelationOptions::CANCEL_NON_POINTER_EVENTS);
-        CancelationOptions options(mode, "input event injection failed");
-        synthesizeCancelationEventsForMonitorsLocked(options);
-        return true;
-    }
-
-    // 4 将分发目标添加到 inputTargets 中
-    addGlobalMonitoringTargetsLocked(inputTargets, getTargetDisplayId(*entry));
-
- 		....
-    // 5 将事件分发给 inputTargets 列表中的目标
-    dispatchEventLocked(currentTime, entry, inputTargets);
-    return true;
-}
-```
-
-注释一处是一个 `InputTarget` 类型的列表，里面保存目标窗口的信息
-
-- InputTarget
-
-    ```C++
-    struct InputTarget {
-      enum {
-        //此标记表示事件正在交付给前台应用程序
-        FLAG_FOREGROUND = 1 << 0,
-        //此标记指示MotionEvent位于目标区域内
-        FLAG_WINDOW_IS_OBSCURED = 1 << 1,
-        ...
-    };
-        //inputDispatcher与目标窗口的通信管道
-        sp<InputChannel> inputChannel;//1
-        //事件派发的标记
-        int32_t flags;
-        //屏幕坐标系相对于目标窗口坐标系的偏移量
-        float xOffset, yOffset;//2
-        //屏幕坐标系相对于目标窗口坐标系的缩放系数
-        float scaleFactor;//3
-        BitSet32 pointerIds;
-    }    
-    ```
-
-    inputTarget 结构图可以说是与目标窗口的转换器，分为两个部分，一个是枚举部分，存储着与目标窗交互的标记，另一部分是所要传递的参数，注释一处 InputChannel 实际上是一个 SocketPair，用于进程的双向通信，注释2是屏幕坐标相对于目标窗口的偏移量，MotionEentry 中存储的 是屏幕坐标系。注释三就是来讲屏幕坐标系转为目标窗口的坐标系。
-
-注释二和三会对点击形式和非触摸形式的事件进行处理，最后讲处理结果交个 injectionResult
-
-注释四将目标窗口添加到 inputTargets 列表中，最终在注释五处将事件分发给 inputTargets 列表中的目标。
-
 ### 总结
 
 本篇文章主要分析了一个原始事件从读取到分发的过程，由于篇幅原因，事件具体是如何分发到 View 上没有分析，这部分内容在下篇文章中在进行分析。
@@ -894,15 +808,15 @@ ool InputDispatcher::dispatchMotionLocked(nsecs_t currentTime, std::shared_ptr<M
 4. InputManager 创建 InputDispatcher 和 InputReader 对象，封闭用于读取和分发事件
 5. InputReader 会开启一个线程，通过调用 EventHub 的 getEvent 方法获取到设备节点中的原始输入事件
 6. InputReader 获取到事件后，就会根据原始事件找对对应的InputDevice(设备对象)
-7. 在InputDevice(设备对象)中根据对应的类型获取到对应的 InputMapper 用于加工事件，InputManager 有很多子类，分别对应了很多事件类型，本篇文章中距离的是键盘输入事件和触摸事件。
+7. 在InputDevice(设备对象)中根据对应的类型获取到对应的 InputMapper 用于加工事件，InputManager 有很多子类，分别对应了很多事件类型，本篇文章中讲的是键盘输入事件和触摸事件。
 8. InputManager 的子类加工完成后都会通过 getListener 进行回调，会掉到 InputDispatcher 中去。
-9. 回调到 InputDispatcher 中后对事件进行封装，被封装后的事件都会继承 EventEntry 类，最后这些事件会被添加到                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
-10. 
+9. 回调到 InputDispatcher 中后对事件进行封装，被封装后的事件都会继承 EventEntry 类，最后这些事件会被添加到 mInboundQueue 队列中。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+10. 接着就会唤醒 InputDispatcher 线程，重新执行 dispatchOnce 函数，根据事件的具体类型，执行对应的函数，最终分发到对应的目标窗口
 
-##### 小结
+### 参考
 
-通过上面 InputReader 的启动和两个例子我们可以看出：
+[Android 输入系统](http://liuwangshu.cn/tags/Android%E8%BE%93%E5%85%A5%E7%B3%BB%E7%BB%9F/) 
 
-1. InputReader 只是调用 EventHub 的 getEvent 获取了原始事件，获取到事件后，就会根据原始事件找到对应的 InputDevice(设备对象)。
-2. 在 InputDevice 中，根据事件获取到对应的 `InputMapper` 用于加工事件。InputMapper 有很多子类，分别对应了很多事件类型，例如触摸事件，多点触摸事件，按键事件等。
-3. 上面也通过两个例子，来大致的看了一下事件被加工封装的过程，通过分析，最终我们可以发现事件被加工结束后都会通过 getListener 回调掉 InputDispatcher 中对应的两个方法，键盘事件最终被封装为 `KeyEntry` 对象，而触摸事件被封装成了 `MotionEntry` 对象。这两个方法最终都调用了 `enqueueInboundEventLocked` 方法，该方法我们在下面继续看。
+https://juejin.cn/post/7169421307421917214#heading-10
+
+https://www.jianshu.com/p/ad476f199e39
