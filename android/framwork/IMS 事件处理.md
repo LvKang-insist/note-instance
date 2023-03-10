@@ -811,7 +811,7 @@ void InputDispatcher::dispatchOnceInnerLocked(nsecs_t* nextWakeupTime) {
 7. 在InputDevice(设备对象)中根据对应的类型获取到对应的 InputMapper 用于加工事件，InputManager 有很多子类，分别对应了很多事件类型，本篇文章中讲的是键盘输入事件和触摸事件。
 8. InputManager 的子类加工完成后都会通过 getListener 进行回调，会掉到 InputDispatcher 中去。
 9. 回调到 InputDispatcher 中后对事件进行封装，被封装后的事件都会继承 EventEntry 类，最后这些事件会被添加到 mInboundQueue 队列中。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
-10. 接着就会唤醒 InputDispatcher 线程，重新执行 dispatchOnce 函数，根据事件的具体类型，执行对应的函数，最终分发到对应的目标窗口
+10. 接着就会唤醒 InputDispatcher 线程，重新执行 dispatchOnce 函数，根据事件的具体类型，执行对应的函数，最终分发到对应的目标窗口 
 
 ### 参考
 

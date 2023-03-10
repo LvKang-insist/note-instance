@@ -12,7 +12,7 @@ onCreate()  ——> onStart() ——>onResume() ——> onPause() ——> onStop
 
 3，activity 由覆盖的状态 回到前台，或者解锁，系统则会调用 onResume 方法，再次进入运行状态。
 
-4，当前activity 转到其他的activity 界面或者按 home 返回主屏，则系统会调用 onPause ，进入停滞状态。
+4，当前activity 转到其他的activity 界面或者按 home 返回主屏，则系统会调用 onPause ，进入停滞状态。跳转到其他 activity 后会执行 onStop
 
 5，用户回退到此 activity 系统会先调用 onRestart 方法，然后调用 onstart 方法，最后调用 onResume 方法 进入运行状态。
 
