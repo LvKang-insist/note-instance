@@ -117,13 +117,11 @@ ART 是在 Android 5.0 中引入的虚拟机，与 DVM 相比，ART 使用的是
 
 
 
-#### Android 为什么会出现 OOM？
+### 为什么会出现 OOM？
 
+出现 OOM 是应为 Android 系统对虚拟机的 heap 做了限制，当申请的空间超过这个限制时，就会抛出 OOM，这样做的目的是为了让系统能同时让比较多的进程常驻于内存，这样程序启动时就不用每次都重新加载到内存，能够给用户更快的响应
 
-
-
-
-#### Android 获取内存限制大小
+#### Android 获取可分配的内存大小
 
 ```kotlin
 val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -134,4 +132,33 @@ manager.memoryClass
 
 我使用的手机内存是 16 g，调用返回的是 256Mb，
 
-堆大小限制
+#### 申请更大的堆内存
+
+```kotlin
+val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+manager.largeMemoryClass
+```
+
+可分配的最大对内存上限，**需要在 manifest 文件中设置 android:largeHeap="true" 方可启用**
+
+#### /system/build.prop
+
+该目录是Android内存配置相关的文件，里面保存了系统的内存的限制等数据，执行 adb 命令可看到 Android 配置的内存相关信息：
+
+```
+adb shell
+cat /system/build.prop
+```
+
+默认是打不开的，没有权限，需要 root
+
+打开后找到 dalvik.vm 相关的配置
+
+```
+dalvik.vm.heapstartsize=5m	#单个应用程序分配的初始内存
+dalvik.vm.heapgrowthlimit=48m	#单个应用程序最大内存限制，超过将被Kill，
+dalvik.vm.heapsize=256m  #所有情况下（包括设置android:largeHeap="true"的情形）的最大堆内存值，超过直接oom。
+```
+
+未设置android:largeHeap="true"的时候，只要申请的内存超过了heapgrowthlimit就会触发oom，而当设置android:largeHeap="true"的时候，只有内存超过了heapsize才会触发oom。heapsize已经是该应用能申请的最大内存（这里不包括native申请的内存）。
+
