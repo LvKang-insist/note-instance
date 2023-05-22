@@ -132,6 +132,8 @@ manager.memoryClass
 
 我使用的手机内存是 16 g，调用返回的是 256Mb，
 
+> manager.memoryClass 对应 build.prop 中 dalvik.vm.heapgrowthlimit 
+
 #### 申请更大的堆内存
 
 ```kotlin
@@ -140,6 +142,14 @@ manager.largeMemoryClass
 ```
 
 可分配的最大对内存上限，**需要在 manifest 文件中设置 android:largeHeap="true" 方可启用**
+
+> manager.largeMemoryClass 对应 build.prop 中 dalvik.vm.heapsize
+
+#### Runtime.maxMemory
+
+获取进程最大可获取的内存上限，等于上面这两个值之一
+
+
 
 #### /system/build.prop
 
@@ -162,3 +172,235 @@ dalvik.vm.heapsize=256m  #所有情况下（包括设置android:largeHeap="true"
 
 未设置android:largeHeap="true"的时候，只要申请的内存超过了heapgrowthlimit就会触发oom，而当设置android:largeHeap="true"的时候，只有内存超过了heapsize才会触发oom。heapsize已经是该应用能申请的最大内存（这里不包括native申请的内存）。
 
+### OOM 演示
+
+#### 堆内存分配失败
+
+堆内存分配失败对应的是 /art/runtime/gc/heap.cc ，如下代码
+
+```c++
+oid Heap::ThrowOutOfMemoryError(Thread* self, size_t byte_count, AllocatorType allocator_type) {
+  // If we're in a stack overflow, do not create a new exception. It would require running the
+  // constructor, which will of course still be in a stack overflow.
+  if (self->IsHandlingStackOverflow()) {
+    self->SetException(
+        Runtime::Current()->GetPreAllocatedOutOfMemoryErrorWhenHandlingStackOverflow());
+    return;
+  }
+  //....
+  std::ostringstream oss;
+  size_t total_bytes_free = GetFreeMemory();
+  oss << "Failed to allocate a " << byte_count << " byte allocation with " << total_bytes_free
+      << " free bytes and " << PrettySize(GetFreeMemoryUntilOOME()) << " until OOM,"
+      << " target footprint " << target_footprint_.load(std::memory_order_relaxed)
+      << ", growth limit "
+      << growth_limit_;
+  
+  self->ThrowOutOfMemoryError(oss.str().c_str());
+}
+```
+
+通过上面的分析，我们也知道系统对每个应用都做了最大内存的约束，超过这个值就会 OOM ，下面通过一段代码来演示一下这种类型的 OOM
+
+```kotlin
+fun testOOM() {
+    val manager = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    Timber.e("app maxMemory ${manager.memoryClass} Mb")
+    Timber.e("large app maxMemory ${manager.largeMemoryClass} Mb")
+    Timber.e("current app maxMemory ${Runtime.getRuntime().maxMemory() / 1024 / 1024} Mb")
+    var count = 0
+    val list = mutableListOf<ByteArray>()
+    while (true) {
+        Timber.e("count $count    total ${count * 20}")
+        list.add(ByteArray(1024 * 1024 * 20))
+        count++
+    }
+}
+```
+
+上面代码中每次申请 20mb，测试分为两种情况，
+
+1. 未开启 largeHeap:
+
+    ```text
+     E  app maxMemory 256 Mb
+     E  large app maxMemory 512 Mb
+     E  current app maxMemory 256 Mb
+     E  count 0    total 0
+     E  count 1    total 20
+     E  count 2    total 40
+     E  count 3    total 60
+     E  count 4    total 80
+     E  count 5    total 100
+     E  count 6    total 120
+     E  count 7    total 140
+     E  count 8    total 160
+     E  count 9    total 180
+     E  count 10    total 200
+     E  count 11    total 220
+     E  count 12    total 240
+    java.lang.OutOfMemoryError: Failed to allocate a 20971536 byte allocation with 12386992 free bytes and 11MB until OOM, target footprint 268435456, growth limit 268435456
+    ......
+    ```
+
+    可以看到一共分配了 12次，在第十二次的时候抛出了异常，显示 分配 20 mb 失败，空闲只有 11 mb，
+
+2. 开启 largeHeap
+
+    ```
+    app maxMemory 256 Mb                      
+    large app maxMemory 512 Mb
+    current app maxMemory 512 Mb
+    E  count 0    total 0
+    E  count 1    total 20
+    E  count 2    total 40
+    E  count 3    total 60
+    E  count 4    total 80
+    E  count 5    total 100
+    E  count 6    total 120
+    E  count 7    total 140
+    E  count 8    total 160
+    E  count 9    total 180
+    E  count 10    total 200
+    E  count 11    total 220
+    E  count 12    total 240
+    E  count 13    total 260
+    E  count 14    total 280
+    E  count 15    total 300
+    E  count 16    total 320
+    E  count 17    total 340
+    E  count 18    total 360
+    E  count 19    total 380
+    E  count 20    total 400
+    E  count 21    total 420
+    E  count 22    total 440
+    E  count 23    total 460
+    E  count 24    total 480
+    E  count 25    total 500
+    FATAL EXCEPTION: main
+    Process: com.dzl.duanzil, PID: 31874
+    java.lang.OutOfMemoryError: Failed to allocate a 20971536 byte allocation with 8127816 free bytes and 7937KB until OOM, target footprint 536870912, growth limit 536870912
+    ```
+
+    可以看到分配了25 次，可使用的内存也增加到了 512 mb
+
+#### 创建线程失败
+
+线程创建会消耗大量的内存资源，创建的过程涉及 java 层 和 native 层，本质上是在 native 层完成的，对应的是 /art/runtime/thread.cc ，如下代码
+
+```c++
+void Thread::CreateNativeThread(JNIEnv* env, jobject java_peer, size_t stack_size, bool is_daemon) {
+  //........
+  env->SetLongField(java_peer, WellKnownClasses::java_lang_Thread_nativePeer, 0);
+  {
+    std::string msg(child_jni_env_ext.get() == nullptr ?
+        StringPrintf("Could not allocate JNI Env: %s", error_msg.c_str()) :
+        StringPrintf("pthread_create (%s stack) failed: %s",
+                                 PrettySize(stack_size).c_str(), strerror(pthread_create_result)));
+    ScopedObjectAccess soa(env);
+    soa.Self()->ThrowOutOfMemoryError(msg.c_str());
+  }
+}
+```
+
+这里借用网上的一张照片来看一下创建线程的流程
+
+<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202305221618788.jpg" alt="2841684743512_.pic" style="zoom:50%;" />
+
+根据上图可以看到主要有两部分，分别是创建 JNI Env 和 创建线程
+
+##### 创建 JNI Env 失败
+
+1. FD 溢出导致 JNIEnv 创建失败
+
+    ```kotlin
+    E/art: ashmem_create_region failed for 'indirect ref table': Too many open files java.lang.OutOfMemoryError:Could not allocate JNI Env at java.lang.Thread.nativeCreate(Native Method) at java.lang.Thread.start(Thread.java:730)
+    ```
+
+2. 虚拟内存不足导致 JNIEnv 创建失败
+
+    ```kotlin
+    E OOM_TEST: create thread : 1104
+    W com.demo: Throwing OutOfMemoryError "Could not allocate JNI Env: Failed anonymous mmap(0x0, 8192, 0x3, 0x22, -1, 0): Operation not permitted. See process maps in the log." (VmSize 2865432 kB)
+    E InputEventSender: Exception dispatching finished signal.
+    E MessageQueue-JNI: Exception in MessageQueue callback: handleReceiveCallback
+    MessageQueue-JNI: java.lang.OutOfMemoryError: Could not allocate JNI Env: Failed anonymous mmap(0x0, 8192, 0x3, 0x22, -1, 0): Operation not permitted. See process maps in the log.
+    E MessageQueue-JNI:      at java.lang.Thread.nativeCreate(Native Method)
+    E MessageQueue-JNI:      at java.lang.Thread.start(Thread.java:887)
+    
+    E AndroidRuntime: FATAL EXCEPTION: main
+    E AndroidRuntime: Process: com.demo, PID: 3533
+    E AndroidRuntime: java.lang.OutOfMemoryError: Could not allocate JNI Env: Failed anonymous mmap(0x0, 8192, 0x3, 0x22, -1, 0): Operation not permitted. See process maps in the log.
+    E AndroidRuntime:        at java.lang.Thread.nativeCreate(Native Method)
+    E AndroidRuntime:        at java.lang.Thread.start(Thread.java:887)
+    ```
+
+##### 创建线程失败
+
+1. 虚拟机内存不足导致失败
+
+    native 通过 FixStackSize 设置线程大小
+
+    ```c++
+    static size_t FixStackSize(size_t stack_size) {
+      if (stack_size == 0) {
+        stack_size = Runtime::Current()->GetDefaultStackSize();
+      }
+      stack_size += 1 * MB;
+      if (kMemoryToolIsAvailable) {
+        stack_size = std::max(2 * MB, stack_size);
+      }  if (stack_size < PTHREAD_STACK_MIN) {
+        stack_size = PTHREAD_STACK_MIN;
+      }
+      if (Runtime::Current()->ExplicitStackOverflowChecks()) {
+        stack_size += GetStackOverflowReservedBytes(kRuntimeISA);
+      } else {
+        stack_size += Thread::kStackOverflowImplicitCheckSize +
+            GetStackOverflowReservedBytes(kRuntimeISA);
+      }
+      stack_size = RoundUp(stack_size, kPageSize);
+      return stack_size;
+    }
+    ```
+
+    ```kotlin
+    W/libc: pthread_create failed: couldn't allocate 1073152-bytes mapped space: Out of memory
+    W/tch.crowdsourc: Throwing OutOfMemoryError with VmSize  4191668 kB "pthread_create (1040KB stack) failed: Try again"
+    java.lang.OutOfMemoryError: pthread_create (1040KB stack) failed: Try again
+            at java.lang.Thread.nativeCreate(Native Method)
+            at java.lang.Thread.start(Thread.java:753)
+    ```
+
+2. 线程数量超过限制
+
+    用一段简单的代码来测试一下
+
+    ```kotlin
+    fun testOOM() {
+        var count = 0
+        while (true) {
+            val thread = Thread(Runnable {
+                Thread.sleep(1000000000)
+            })
+            thread.start()
+            count++
+            Timber.e("current thread count $count")
+        }
+    }
+    ```
+
+    通过打印日志发现，一共创建了 2473 个线程，当然这些线程都是没有任务的线程，报错信息如下所示
+
+    ```kotlin
+    pthread_create failed: couldn't allocate 1085440-bytes mapped space: Out of memory
+    Throwing OutOfMemoryError "pthread_create (1040KB stack) failed: Try again" (VmSize 4192344 kB)
+    
+    FATAL EXCEPTION: main
+    Process: com.dzl.duanzil, PID: 18085
+    java.lang.OutOfMemoryError: pthread_create (1040KB stack) failed: Try again
+    	at java.lang.Thread.nativeCreate(Native Method)
+    ```
+
+    
+
+    
