@@ -1,14 +1,12 @@
 ### 前言
 
-Android 系统对每个app都会有一个最大的内存限制，如果超出这个限制，就会抛出 OOM，也就是Out Of Memory ，本质上是抛出的一个异常，一般是在内存超出限制之后抛出的。最为常见的 OOM 就是内存泄露(大量的对象无法被释放)导致的 OOM，或者说是需要的内存大小大于可分配的内存大小，例如加载一张非常大的图片，就可能出现 OOM。
-
-
+**Android 系统对每个app都会有一个最大的内存限制，如果超出这个限制，就会抛出 OOM，也就是Out Of Memory** 。本质上是抛出的一个异常，一般是在内存超出限制之后抛出的。最为常见的 OOM 就是内存泄露(大量的对象无法被释放)导致的 OOM，或者说是需要的内存大小大于可分配的内存大小，例如加载一张非常大的图片，就可能出现 OOM。
 
 ### 常见的 OOM 
 
 #### 堆溢出
 
-堆内存溢出是最为常见的 OOM ，通常是由于堆内存已经满了，并且不能够被垃圾回收器回收，从而导致 OOM。
+堆内存溢出是最为常见的 OOM ，**通常是由于堆内存已经满了，并且不能够被垃圾回收器回收**，从而导致 OOM。
 
 #### 线程溢出
 
@@ -26,7 +24,7 @@ Android 系统对每个app都会有一个最大的内存限制，如果超出这
 
 ### Jvm,Dvm,Art的内存区别
 
-Android 中使用的是基于 Java 语言的虚拟机 Dalvik / ART ，而 Dalvik 和 ART 都是基于 JVM 的，但是需要注意的是 Android 中的 虚拟器和标准的 JVM 有所不同，因为它们需要运行在 Android 设备上，因此他们具有不同的优化和限制。
+Android 中使用的是基于 Java 语言的虚拟机 Dalvik / ART ，而 **Dalvik 和 ART 都是基于 JVM** 的，但是需要注意的是 Android 中的 虚拟器和标准的 JVM 有所不同，因为它们需要运行在 Android 设备上，因此他们具有不同的优化和限制。
 
 在回收方面，Dalvik 仅固定一种回收算法，而 ART 回收算法可在运行期按需选择，并且ART 具备内存整理能力，减少内存空洞。
 
@@ -35,11 +33,11 @@ Android 中使用的是基于 Java 语言的虚拟机 Dalvik / ART ，而 Dalvik
 JVM 是一个虚构出来的计算机，是通过在实际计算机上仿真各种计算机功能来实现的，它有完善的(虚拟)硬件架构，还有相应的指令系统，其指令集基于堆栈结构。使用 `Java虚拟机`就是为了支持系统操作无关，在任何系统中都可以运行的程序。
 
 JVM 将所管理的内存分为以下几个部分:
-![image-20230512152005731](https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202305121520882.png)
+![image-20230512152005731](/Users/tidycar/Desktop/202305121520882.png)
 
 - 方法区
 
-    各个线程锁共享的，用于存储已经被虚拟机加载的类信息，常量，静态变量等，当方法区无法满足内存分配需求时，将会抛出 OutOfMemoryError 异常。
+    **各个线程锁共享的，用于存储已经被虚拟机加载的类信息，常量，静态变量等**，当方法区无法满足内存分配需求时，将会抛出 OutOfMemoryError 异常。
 
     - 常量池
 
@@ -47,7 +45,7 @@ JVM 将所管理的内存分为以下几个部分:
 
 - Java 堆
 
-    虚拟机内存中最大的一块内存，所有通过 new 创建的对象都会在堆内存进行分配，是虚拟机中最大的一块内存，也是gc需要回收的部分，同时OOM也容易发生在这里。
+    虚拟机内存中最大的一块内存，**所有通过 new 创建的对象都会在堆内存进行分配，是虚拟机中最大的一块内存，也是gc需要回收的部分，同时OOM也容易发生在这里**。
 
     从内存回收角度来看，由于现在收集器大都采用分代收集法，所以还可以细分为新生代，老年代等。
 
@@ -55,7 +53,7 @@ JVM 将所管理的内存分为以下几个部分:
 
 - Java 栈
 
-    线程私有，用来存放 java 方法执行时的所有数据，由栈贞组成，一个栈贞就代表一个方法的执行，每个方法的执行就相当于是一个栈贞在虚拟机中从入栈到出栈的过程。栈贞中主要包括，局部变量，栈操作数，动态链接等。
+    **线程私有**，用来存放 java 方法执行时的所有数据，由栈贞组成，一个栈贞就代表一个方法的执行，每个方法的执行就相当于是一个栈贞在虚拟机中从入栈到出栈的过程。栈贞中主要包括，局部变量，栈操作数，动态链接等。
 
     Java 栈划分为操作数栈，栈帧数据和局部变量数据，方法中分配的局部变量在栈中，同时每一次方法的调用都会在栈中奉陪栈帧，栈的大小是把双刃剑，分配太小可能导致栈溢出，特别是在有递归，大量的循环操作的时候。如果太大就会影响到可创建栈的数量，如果是多线程应用，就会导致内存溢出。
 
@@ -73,11 +71,11 @@ JVM 将所管理的内存分为以下几个部分:
 
 ##### DVM 运行时堆
 
-DVM 的堆结构和 JVM 的堆结构有所区别，主要体现在将堆分成了 Active 堆 和 Zygote 堆。Zygote 是一个虚拟机进程，同时也是一个虚拟机实例孵化器，zygote 堆是 Zygote 进程在启动时预加载的类，资源和对象，除此之外我们在代码中创建的实例，数组等都是存储在 Active 堆中的。
+DVM 的堆结构和 JVM 的堆结构有所区别，主要体现在**将堆分成了 Active 堆 和 Zygote 堆**。Zygote 是一个虚拟机进程，同时也是一个虚拟机实例孵化器，zygote 堆是 Zygote 进程在启动时预加载的类，资源和对象，除此之外我们在代码中创建的实例，数组等都是存储在 Active 堆中的。
 
 为什么要将 Dalvik 堆分为两块，主要是因为 Android 通过 fork 方法创建一个新的 zygote 进程，为了尽量避免父进程和子进程之间的数据拷贝。
 
-Dalvik 的 Zygote 对存放的预加载类都是 Android 核心类和 Java 运行时库，这部分很少被修改，大多数情况下子进程和父进程共享这块区域，英雌这部分类没有必要进行垃圾回收，而 Active 作为程序代码中创建的实例对象的堆，是垃圾回收的重点区域，因此需要将两个堆分开。
+Dalvik 的 **Zygote 对存放的预加载类都是 Android 核心类和 Java 运行时库，这部分很少被修改，大多数情况下子进程和父进程共享这块区域，因此这部分类没有必要进行垃圾回收**，而 Active 作为程序代码中创建的实例对象的堆，是垃圾回收的重点区域，因此需要将两个堆分开。
 
 ##### DVM 回收机制
 
@@ -95,7 +93,7 @@ DVM 的垃圾回收策略默认是标记清除算法(mark-and-sweep)，基本流
 
 #### ART
 
-ART 是在 Android 5.0 中引入的虚拟机，与 DVM 相比，ART 使用的是 AOT(Ahead of Time) 编译技术，这意味着他将应用程序的字节码转换为本机机器码，而不是在运行时逐条解释字节码，这种编译技术可以提高应用程序的执行效率，减少应用程序启动时间和内存占用量
+ART 是在 Android 5.0 中引入的虚拟机，与 DVM 相比，**ART 使用的是 AOT(Ahead of Time) 编译技术**，这意味着他将应用程序的字节码转换为本机机器码，而不是在运行时逐条解释字节码，这种编译技术可以提高应用程序的执行效率，减少应用程序启动时间和内存占用量
 
 ##### JIT 和 AOT 区别
 
@@ -115,11 +113,9 @@ ART 是在 Android 5.0 中引入的虚拟机，与 DVM 相比，ART 使用的是
 
 
 
-
-
 ### 为什么会出现 OOM？
 
-出现 OOM 是应为 Android 系统对虚拟机的 heap 做了限制，当申请的空间超过这个限制时，就会抛出 OOM，这样做的目的是为了让系统能同时让比较多的进程常驻于内存，这样程序启动时就不用每次都重新加载到内存，能够给用户更快的响应
+出现 OOM 是应为 **Android 系统对虚拟机的 heap 做了限制，当申请的空间超过这个限制时，就会抛出 OOM**，这样做的目的是为了让系统能同时让比较多的进程常驻于内存，这样程序启动时就不用每次都重新加载到内存，能够给用户更快的响应
 
 #### Android 获取可分配的内存大小
 
@@ -305,7 +301,7 @@ void Thread::CreateNativeThread(JNIEnv* env, jobject java_peer, size_t stack_siz
 
 这里借用网上的一张照片来看一下创建线程的流程
 
-<img src="https://raw.githubusercontent.com/LvKang-insist/PicGo/main/img/202305221618788.jpg" alt="2841684743512_.pic" style="zoom:50%;" />
+<img src="/Users/tidycar/Desktop/202305221618788.jpg" alt="2841684743512_.pic" style="zoom:50%;" />
 
 根据上图可以看到主要有两部分，分别是创建 JNI Env 和 创建线程
 
@@ -401,6 +397,144 @@ void Thread::CreateNativeThread(JNIEnv* env, jobject java_peer, size_t stack_siz
     	at java.lang.Thread.nativeCreate(Native Method)
     ```
 
-    
+    通过测试可以看出来，具体的原因也是内存不足引起的，而不是线程数量超过限制，可能是。
 
     
+
+### OOM 监控
+
+我们都知道，OOM 的出现就是大部分原因都是由于内存泄露，导致内存无法释放，才出现了 OOM，所以监控主要监控的是内存泄露，现在市面上对于内存泄露检查这方面已经非常成熟了，我们来看几个常用的监控方式
+
+#### LeakCanary
+
+使用非常简单，只需要添加依赖后就可以直接使用，无需手动初始化，就能实现内存泄露检测，当内存发生泄露后，会自动发出一个通知，点击就可以查看具体的泄露堆栈信息
+
+LeakCannary 只能在 debug 环境使用，因为他是在当前进程 dump 内存快照，会冻结当前进程一段时间，所以不适于在正式环境使用。
+
+#### Android Profile
+
+可以以图像的方式直观的查看内存使用情况，并且可以直接 capture heap dump，或者抓取原生内存(C/C++)  以及 Java/Kotlin 内存分配。只能在线下使用，功能非常强大，可是吧内存泄露，抖动，强制 GC 等。
+
+#### ResourceCanary
+
+ResourceCanary 属于 Matrix 的一个子模块，它将原本难以发现的 Acivity 泄露和 Activity 泄露和重复创建的沉余的 Bitmap 暴露出来，并提供引用链等信息帮助排查这些问题
+
+ResourceCanary 将检测和分析分离，客户端只负责检测和dump内存镜像文件，并且对检查部分生成的 Hprof 文件进行了裁剪，移除了大部分无用数据。也增加了 Bitmap 对象检测，方便通过减少沉余 Bitmap 数量，降低内存消耗。
+
+使用可查看 [Matrix](https://github.com/Tencent/matrix#matrix_android_cn)
+
+#### KOOM
+
+上面的两者都只能在线下使用，而 KOOM 可以再线上使用，KOOM 是快手出的一套完整的解决方案，可以实现 Java，native 和 thread 的泄露监控
+
+使用可查看 [KOOM](https://github.com/KwaiAppTeam/KOOM/blob/master/README.zh-CN.md)
+
+### 优化方向
+
+#### 图片优化
+
+- 统一图片库
+
+    在项目中，应该避免使用多种图片库，多种图片库会导致图片的重复缓存等一系列的问题
+
+- 图片压缩
+
+    对于一些图片资源文件，可以再添加到项目中的时候对图片进行压缩处理，这里推荐一个插件 **[CodeLocator](https://github.com/bytedance/CodeLocator)** ，该插件在前一段时间好像用不了了，这里在推荐一个插件 **[McImage](https://github.com/smallSohoSolo/McImage)**，在打包的时候回对图片进行压缩处理。
+
+    使用方式如下
+
+    ```groovy
+    buildscript {
+        repositories {
+            mavenCentral()
+        }
+        dependencies {
+            classpath 'com.smallsoho.mobcase:McImage:1.5.1'
+        }
+    }
+    ```
+
+    然后在你想要压缩的Module的build.gradle中应用这个插件，注意如果你有多个Module，请在每个Module的build.gradle文件中apply插件
+
+    ```groovy
+    apply plugin: 'McImage'
+    ```
+
+    最后将我代码中的mctools文件夹放到项目根目录，此文件在[这里下载](https://github.com/Mobcase/McImage/releases)
+
+    ```
+    mctools
+    ```
+
+    配置
+
+    你可以在build.gradle中配置插件的几个属性，如果不设置，所有的属性都使用默认值
+
+    ```groovy
+    McImageConfig {
+            isCheckSize true //是否检测图片大小，默认为true
+            optimizeType "Compress" //优化类型，可选"ConvertWebp"，"Compress"，转换为webp或原图压缩，默认Compress，使用ConvertWep需要min sdk >= 18.但是压缩效果更好
+            maxSize 1*1024*1024 //大图片阈值，default 1MB
+            enableWhenDebug false //debug下是否可用，default true
+            isCheckPixels true // 是否检测大像素图片，default true
+            maxWidth 1000 //default 1000 如果开启图片宽高检查，默认的最大宽度
+            maxHeight 1000 //default 1000 如果开启图片宽高检查，默认的最大高度
+            whiteList = [ //默认为空，如果添加，对图片不进行任何处理
+    
+            ]
+            mctoolsDir "$rootDir"
+            isSupportAlphaWebp false  //是否支持带有透明度的webp，default false,带有透明图的图片会进行压缩
+            multiThread true  //是否开启多线程处理图片，default true
+            bigImageWhiteList = [
+                    "launch_bg.png"
+            ] //默认为空，如果添加，大图检测将跳过这些图片
+    }
+    ```
+
+- 图片监控
+
+    通过对 app 中所有的图片监控，实时查看图片占用的内存大小，从而发现图片大小是否合适，是否存在泄露等，推荐一个分析工具 **[AndroidBitmapMonitor](https://github.com/shixinzhang/AndroidBitmapMonitor/blob/master/README_CN.md)**，该工具可获取内存中图片的数量及占用大小，并且可以获取 Bitmap 的创建堆栈等。
+
+    另外，也可以通过自定义实现监控，通过监听 setImageDrawable 等方法，获取图片的大小以及 ImageView 本身的大小，然后再判断提示是否需要修改即可，具体方案如下：
+
+    1. 自定义 ImageView，重写 setImageResource ，setBackground 等方法，在里面检测图片的大小
+    2. 使用自定义的 ImageView，如果挨个替换肯定不现实，这里提供两种方式，第一种，在编译期修改字节码，将所有的 ImageView 都替换为自定义的 ImageView，第二种，重写 Layoutinflat.Fractory2，在创建 View 的时候将 ImageVIew 替换为自定义的 ImageView，可封装一下，一键式替换。
+    3. 检查的时候可以异步检测，或者在主线程空闲的时候检查。
+
+- 优化加载方式
+
+    一般情况下，我们加载图片都使用的是 Glide 或者别的图片加载库，就比如 Glide 默认的图片加载格式是 ARGB_8888，对于这种格式，每个像素需要占用四个字节，对于一些低端机型，为了降低内存的占有率，可以修改图片的加载格式为 RGB_565 ，相比于 ARGB_8888 每个像素只有两个字节，故可以节省一半的内存，代价就是少了透明通道，对于不需要透明通道的图片来说，使用这种方式加载无疑是更好的选择。
+
+    ```kotlin
+    fun loadRGB565Image(context: Context, url: String?, imageView: ImageView) {
+        Glide.with(context)
+            .load(url)
+            .apply(RequestOptions().format(DecodeFormat.PREFER_RGB_565))
+            .into(imageView)
+    }
+    ```
+
+    也可以指定 Bitmap 的格式
+
+    ```kotlin
+    BitmapFactory.Options options = new BitmapFactory.Options();
+    options.inPreferredConfig = Bitmap.Config.RGB_565;
+    ```
+
+    
+
+
+
+
+
+### 参考链接
+
+[【性能优化】大厂OOM优化和监控方案](https://juejin.cn/post/7074762489736478757)
+
+[深入探索 Android 内存优化](https://juejin.cn/post/6844904099998089230)
+
+[DVM和ART原理初探](https://juejin.cn/post/6844903480520359944)
+
+[Android OOM 问题探究](https://www.cnblogs.com/roger-yu/p/16599262.html)
+
+....
