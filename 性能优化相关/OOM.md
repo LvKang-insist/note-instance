@@ -111,7 +111,21 @@ ART 是在 Android 5.0 中引入的虚拟机，与 DVM 相比，**ART 使用的�
 
 分别是 Zygote、Active、Image 和 Large Object 组成的，其中 Zygote 和 Active 的作用越 DVM 中的作用是一样的，Image 区域用来存放一些预加载的类，Large Object 用来分配一下大对象(默认大小为12kb)，其中 Zygote 和 Image 是进程间共享的，
 
+### LMK 内存管理机制
 
+LMK(Low Memory Killer) 是 Android 系统内存管理机制的一部分，LMK 是在内存不足时释放系统中不必要的进程，以保证系统的正常运行。
+
+LMK 机制的底层原理是利用内核 OOM 机制来管理内存，当系统内存不足时，内核会根据各个进程优先级将内存优先分配给重要的进程，同时会结束一下不重要的进程，避免系统崩溃。
+
+LKM 机制的使用场景包括：
+
+- 系统内存不足：LMK 机制帮助系统管理内存，以保证系统正常运行
+- 内存泄露：当应用存在内存泄露时，LMK 会将泄露的内存释放掉，以保证系统正常运行
+- 进程优化：帮助系统管理进程，以确保系统资源的合理利用
+
+在系统内存紧张的情况下，LMK 机制可以通过结束不重要的进程来释放内存，以保证系统正常运行。
+
+但是如果不当使用，它也可能导致应用程序的不稳定。
 
 ### 为什么会出现 OOM？
 
@@ -433,6 +447,8 @@ ResourceCanary 将检测和分析分离，客户端只负责检测和dump内存�
 
 #### 图片优化
 
+图片所占用的内存其实和图片的大小是没有太大关系的，主要取决于图片的宽高以及图片的加载方式，例如 ARGB__8888 就比 RGB_565 所占用的内存大了一倍，要计算图片占用了多大内存，可查看这篇文章 **[计算图片占用内存大小](https://juejin.cn/post/7085372918602924068)**，下面介绍几种图片的优化方式
+
 - 统一图片库
 
     在项目中，应该避免使用多种图片库，多种图片库会导致图片的重复缓存等一系列的问题
@@ -521,9 +537,109 @@ ResourceCanary 将检测和分析分离，客户端只负责检测和dump内存�
     options.inPreferredConfig = Bitmap.Config.RGB_565;
     ```
 
-    
+- 设置图片采样率
+
+    ```cpp
+    Options options = new BitmapFactory.Options();
+    options.inSampleSize = 5; // 原图的五分之一，设置为2则为二分之一
+    Bitmap bitmap = BitmapFactory.decodeResource(getResources(),
+                           R.id.myimage, options);
+    ```
+
+    inSampleSize 值越大，图片质量越差，需谨慎设置
+
+#### 内存泄露优化
+
+如果内存在规定的生命周期内没有被释放掉，就会被认为是内存泄露，而内存泄露的次数多了，就会占用很大一部分内存，从而导致新对象申请不到可用的内存，最终就会出现 OOM。
+
+如何观测内存泄露在上文中已经提出了解决的办法，这里主要说一下在日常开发过程中，如何规避一些常见的内存泄露
+
+1. 内存抖动
+
+    内存抖动主要说的是在一段时间内频繁的创建对象，而回收的速度更不上创建的速度，并且导致了很多不连续的内存片。
+
+    通过 Profiler 观察，如果频繁的出现 GC ，内存曲线呈锯齿状，就极有可能发生内存抖动，如下图所示：
+
+    ![image-20230526152913242](/Users/tidycar/Desktop/202305261529368.png)
+
+​		出现这种情况肯定就是频繁的创建对象而导致的，例如：在 onDraw 中频繁的创建重复对象，在循环中不断创建局部变量等等，这些都是可以在开发中直接避免的问题，以及使用缓存池，手动释放缓存池中的对象，多进行复用等等。
+
+2. 各种常见的泄露方式
+
+    - 集合泄露
+
+    - 单例泄露
+
+    - 匿名内部类泄露
+
+        静态匿名内部类 和外部类的关系：**如果没有传入参数就没有引用关系，被调用是不需要外部类的实例**，不能调用外部类的方法和变量，拥有自主的生命周期
+
+        非静态匿名内部类 和外部类的关系，**自动获取外部类的强引用，被调用时需要外部类实例**，可以调用外部类的方法和变量，依赖于外部类，甚至比外部类更长。
+
+    - 资源文件未关闭造成的泄露
+
+        1. 主序广播
+        2. 关闭输入输出流
+        3. 回收 Bitmap
+        4. 停止销毁动画
+        5. 销毁 WebView
+        6. 及时注销 eventBus 以及需要注销的组件等
+
+    - Handler 早餐内存泄露
+
+        如果 Handler 中有延时任务或者等待的任务队列过长，都有可能因为 Handler 的继续执行从而导致内存泄露
+
+        解决方法：静态内部类+弱引用
+
+        ```java
+        private static class MyHalder extends Handler {
+        
+        		private WeakReference<Activity> mWeakReference;
+        
+        		public MyHalder(Activity activity) {
+        			mWeakReference = new WeakReference<Activity>(activity);
+        		}
+        
+        		@Override
+        		public void handleMessage(Message msg) {
+        			super.handleMessage(msg);
+        			//...
+        		}
+        	}
+        	最后在Activity退出时，移除所有信息
+        	移除信息后，Handler 将会跟Activity生命周期同步
+        	
+        	@Override
+        	protected void onDestroy() {
+        		super.onDestroy();
+        		mHandler.removeCallbacksAndMessages(null);
+        	}
+        }
+        ```
+
+    - 多线程导致内存泄露
+        1. 使用匿名内部类启动的线程默认会持有外部对象的引用
+        2. 线程数量超过限制导致泄露，这种情况可以使用线程池。
 
 
+
+#### 内存监控及兜底策略
+
+使用上面介绍的几种方式来实现在线上/线下对内存的监控。
+
+也可以自己起一个线程，定时的去监控实时的内存使用情况，如果内存告急，可以清理 Glide 等一些占用内存较大的缓存来救急
+
+使用 Activity 兜底策略，在 BaseActivity 的 onDestory 做一些 View 的监听移除，背景置 null 等等。
+
+
+
+
+
+### 最后
+
+本文到此结束，文章中的内容也是通过积累和查看阅读资料找到的，当然本文所讲的优化方式也是最基础最简单的，如果有任何问题可直接留言或者私信。
+
+都看到这了，就动动发财的小手点个赞呗！
 
 
 
@@ -531,10 +647,14 @@ ResourceCanary 将检测和分析分离，客户端只负责检测和dump内存�
 
 [【性能优化】大厂OOM优化和监控方案](https://juejin.cn/post/7074762489736478757)
 
-[深入探索 Android 内存优化](https://juejin.cn/post/6844904099998089230)
+[深入探索 Android 内存优化上](https://juejin.cn/post/6844904099998089230)
+
+[深入探索 Android 内存优化下](https://juejin.cn/post/6872919545728729095)
 
 [DVM和ART原理初探](https://juejin.cn/post/6844903480520359944)
 
 [Android OOM 问题探究](https://www.cnblogs.com/roger-yu/p/16599262.html)
+
+[内存优化 · 基础论 · 初识Android内存优化](https://juejin.cn/post/7198826344582037562)÷
 
 ....
